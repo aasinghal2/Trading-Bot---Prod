@@ -127,7 +127,7 @@ class MarketMetricsAnalyzer:
         """Fetch market metrics from data sources"""
         try:
             # Fetch SPY data for market returns
-            spy_data = yf.download('SPY', period='3mo', interval='1d', progress=False)
+            spy_data = yf.download('SPY', period='3mo', interval='1d', progress=False, auto_adjust=True)
             if spy_data.empty:
                 logger.error("Failed to fetch SPY data")
                 return None
@@ -138,7 +138,7 @@ class MarketMetricsAnalyzer:
             spy_return_30d = float((spy_data['Close'].iloc[-1] / spy_data['Close'].iloc[-31] - 1)) if len(spy_data) >= 31 else 0.0
             
             # Fetch VIX data
-            vix_data = yf.download('^VIX', period='1mo', interval='1d', progress=False)
+            vix_data = yf.download('^VIX', period='1mo', interval='1d', progress=False, auto_adjust=True)
             vix_current = float(vix_data['Close'].iloc[-1]) if not vix_data.empty else 20.0
             vix_change_5d = float(vix_current - vix_data['Close'].iloc[-6]) if len(vix_data) >= 6 else 0.0
             
@@ -175,7 +175,7 @@ class MarketMetricsAnalyzer:
             
             for sector, etf in self.sector_etfs.items():
                 try:
-                    data = yf.download(etf, period='1mo', interval='1d', progress=False)
+                    data = yf.download(etf, period='1mo', interval='1d', progress=False, auto_adjust=True)
                     if len(data) >= 20:
                         # Check if sector is above 20-day moving average
                         ma_20 = float(data['Close'].rolling(20).mean().iloc[-1])
@@ -204,7 +204,7 @@ class MarketMetricsAnalyzer:
         try:
             for sector, etf in self.sector_etfs.items():
                 try:
-                    data = yf.download(etf, period='1mo', interval='1d', progress=False)
+                    data = yf.download(etf, period='1mo', interval='1d', progress=False, auto_adjust=True)
                     if len(data) >= 20:
                         # Calculate 20-day return
                         return_20d = (data['Close'].iloc[-1] / data['Close'].iloc[-21] - 1)
