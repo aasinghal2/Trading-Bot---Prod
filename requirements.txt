@@ -18,7 +18,8 @@ pandas-ta>=0.3.14b
 ccxt>=2.0.0
 
 # Machine Learning & NLP
-tensorflow>=2.8.0
+tensorflow>=2.15.0
+tf-keras>=2.15.0
 torch>=1.12.0
 transformers>=4.20.0
 huggingface-hub>=0.16.0
