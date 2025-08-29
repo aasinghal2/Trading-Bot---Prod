@@ -16,8 +16,8 @@ market_data:
     - "TSLA"
     - "NVDA"
   
-  # Data refresh intervals (seconds)
-  real_time_interval: 1
+  # Data refresh intervals (seconds) - optimized for cloud deployment
+  real_time_interval: 300  # 5 minutes for production (was 1 second)
   historical_lookback_days: 252
   
   # API configurations
@@ -79,6 +79,8 @@ agents:
   # Sentiment Agent
   sentiment_analyst:
     enabled: true
+    # Cloud optimization: fast_mode bypasses heavy sentiment analysis
+    fast_mode: true                   # Enable for cloud deployment
     sources:
       - "news_articles"
       - "social_media"
@@ -89,9 +91,9 @@ agents:
       provider: "chromadb"
       collection_name: "trading_sentiment"
     data_limits:
-      reddit_posts_per_query: 30     # Posts per search query
-      news_articles_limit: 20        # Max news articles to fetch
-      min_text_length: 100           # Minimum text length for analysis
+      reddit_posts_per_query: 20      # Further reduced for ultra-fast processing
+      news_articles_limit: 5        # Further reduced for ultra-fast processing
+      min_text_length: 50            # Further reduced minimum
     
   # Risk Manager Agent
   risk_manager:
