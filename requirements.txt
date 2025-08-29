@@ -62,6 +62,7 @@ pytz>=2022.1
 pydantic>=2.0.0
 asyncpraw
 nest_asyncio
+schedule>=1.2.0
 # UI requirements (can be installed separately)
 Flask
 Flask-SocketIO
