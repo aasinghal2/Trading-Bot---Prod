@@ -1,0 +1,56 @@
+# Environment Variables Template for SWING TRADER Production Deployment
+# Copy this file to .env and fill in your API keys
+
+# ========================================
+# REQUIRED APIS FOR PRODUCTION DEPLOYMENT
+# ========================================
+
+# Market Data API (REQUIRED)
+# Alpha Vantage: Get free API key from https://www.alphavantage.co/support/#api-key
+# Free tier: 5 calls/minute, 500 calls/day (SAFE with SWING TRADER's 7 ops/day)
+ALPHA_VANTAGE_API_KEY=your_alpha_vantage_api_key_here
+
+# Reddit API for Sentiment Analysis (REQUIRED)
+# Get credentials from: https://www.reddit.com/prefs/apps
+# 1. Create "script" type app
+# 2. Get Client ID and Client Secret
+REDDIT_CLIENT_ID=your_reddit_client_id_here
+REDDIT_CLIENT_SECRET=your_reddit_client_secret_here
+REDDIT_USER_AGENT=TradingBot/1.0 (by u/YourRedditUsername)
+
+# ========================================
+# PRODUCTION CONFIGURATION (REQUIRED)
+# ========================================
+
+# System Configuration
+ENVIRONMENT=production
+LOG_LEVEL=INFO
+
+# Portfolio Configuration ($100K LIVE TRADING)
+INITIAL_CAPITAL=100000
+DEPLOYMENT_MODE=production
+SWING_TRADER_MODE=true
+
+# ========================================
+# OPTIONAL APIS (Enhanced Features)
+# ========================================
+
+# Polygon: Professional market data (optional premium upgrade)
+# POLYGON_API_KEY=your_polygon_api_key_here
+
+# Email Settings (REQUIRED for transaction notifications)
+EMAIL_NOTIFICATIONS=true
+EMAIL_SMTP_SERVER=smtp.gmail.com
+EMAIL_SMTP_PORT=587
+EMAIL_USERNAME=your_email@gmail.com
+EMAIL_PASSWORD=your_email_app_password_here
+
+# Note: For Gmail, use an "App Password" instead of your regular password
+# 1. Go to Google Account settings > Security > 2-Step Verification
+# 2. Generate an "App Password" for this trading bot
+# 3. Use that 16-character password above
+
+# Performance Monitoring
+ENABLE_METRICS=true
+METRICS_ENDPOINT=http://localhost:8080/metrics
+HEALTH_CHECK_PORT=8081

@@ -1,0 +1,68 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env
+venv
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
+.tox
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.pytest_cache
+
+# Environment variables
+.env
+.env.local
+.env.production
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation
+*.md
+docs/
+
+# Development files
+.editorconfig
+.pre-commit-config.yaml
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Logs and temporary files
+logs/*.log
+*.tmp
+*.temp
+
+# Data files (will be mounted as volumes)
+data/*.db
+data/*.json
+recommendations/*
+
+# Tests
+tests/
+test_*.py
+*_test.py

@@ -1,0 +1,206 @@
+# Multi-Agent Trading System Configuration
+
+# Market Data Configuration
+market_data:
+  # Data sources priority order
+  sources:
+    - "yfinance"
+    - "alpha_vantage"
+    - "polygon"
+  
+  # Trading symbols to monitor
+  symbols:
+    - "AAPL"
+    - "GOOGL"
+    - "MSFT"
+    - "TSLA"
+    - "NVDA"
+  
+  # Data refresh intervals (seconds)
+  real_time_interval: 1
+  historical_lookback_days: 252
+  
+  # API configurations
+  apis:
+    alpha_vantage:
+      key: "${ALPHA_VANTAGE_API_KEY}"
+      base_url: "https://www.alphavantage.co/query"
+    
+    polygon:
+      key: "${POLYGON_API_KEY}"
+      base_url: "https://api.polygon.io"
+
+# Agent Configuration
+agents:
+  # Technical Analysis Agent
+  technical_analyst:
+    enabled: true
+    strategies:
+      trend_following:
+        ema_short: 12
+        ema_long: 26
+        adx_threshold: 25
+      mean_reversion:
+        rsi_oversold: 30
+        rsi_overbought: 70
+        bollinger_std: 2
+      momentum:
+        macd_fast: 12
+        macd_slow: 26
+        macd_signal: 9
+      volatility:
+        atr_period: 14
+        volatility_threshold: 0.02
+    
+  # Fundamentals Agent
+  fundamentals_analyst:
+    enabled: true
+    analysis_depth: "standard"  # basic | standard | comprehensive
+    data_sources:
+      - "financial_statements"
+      - "earnings_reports"
+      - "macro_indicators"
+    metrics:
+      - "pe_ratio"
+      - "ev_ebitda"
+      - "dividend_yield"
+      - "roe"
+      - "debt_to_equity"
+    classification:
+      mode: "sector_percentiles"   # fixed_thresholds | sector_percentiles
+      undervalued_percentile: 0.2   # <=20th pct considered undervalued (with guards)
+      overvalued_percentile: 0.8    # >=80th pct considered overvalued
+      min_sector_peers: 3           # require at least N peers per sector
+      quality_guards:
+        min_roe: 0.10               # 10% ROE minimum
+        min_operating_margin: 0.00  # allow >=0 by default
+        min_earnings_growth: 0.00   # allow non-negative by default
+    
+  # Sentiment Agent
+  sentiment_analyst:
+    enabled: true
+    sources:
+      - "news_articles"
+      - "social_media"
+    models:
+      sentiment_model: "cardiffnlp/twitter-roberta-base-sentiment-latest"
+      news_model: "ProsusAI/finbert"
+    vector_db:
+      provider: "chromadb"
+      collection_name: "trading_sentiment"
+    data_limits:
+      reddit_posts_per_query: 30     # Posts per search query
+      news_articles_limit: 20        # Max news articles to fetch
+      min_text_length: 100           # Minimum text length for analysis
+    
+  # Risk Manager Agent
+  risk_manager:
+    enabled: true
+    max_portfolio_risk: 0.20  # Maximum portfolio risk (20% of total value at risk)
+    risk_metrics:
+      var_confidence: 0.95
+      cvar_confidence: 0.95
+      max_drawdown: 0.15
+      max_position_size: 0.15  # Increased to 15% to allow adding to strong positions
+      max_portfolio_leverage: 2.0
+    
+  # Portfolio Manager Agent
+  portfolio_manager:
+    enabled: true
+    initial_capital: 100000
+    max_positions: 15
+    rebalance_frequency: "daily"
+    allocation_method: "optimizer"  # or "equal_weight", "risk_parity", "market_cap"
+    # Optimizer parameters (mean-variance inspired) - ENHANCED FOR BETTER ALLOCATION
+    total_investment_target: 1.0   # invest up to 100% of portfolio value (maximize cash deployment)
+    risk_aversion: 3.0             # reduced for more aggressive allocation to strong signals
+    mu_scale: 0.15                 # increased scale for better signal differentiation
+    # Persistence of portfolio state across runs
+    persistence:
+      enabled: true
+      state_file: "data/portfolio_state.json"
+
+# Risk Management
+risk_management:
+  # Global risk limits
+  max_daily_loss: 0.05  # 5% of portfolio
+  max_single_position: 0.1  # 10% of portfolio
+  stop_loss_threshold: 0.10  # 10% stop loss
+  take_profit_threshold: 0.15  # 15% take profit
+  
+  # VaR settings
+  var_method: "historical"  # or "parametric", "monte_carlo"
+  var_window: 252
+  confidence_level: 0.95
+
+# Trading Configuration
+trading:
+  # Signal Thresholds
+  signal_thresholds:
+    minimum_strength: 0.25           # Minimum signal strength to propose trades (static fallback)
+    moderate_strength: 0.6           # Threshold between moderate and strong signals
+    strong_multiplier: 1.5           # Multiplier for strong signals (capped at 1.0)
+    
+    # Dynamic Threshold Settings (Hybrid Approach)
+    dynamic:
+      enabled: true                  # Enable dynamic threshold calculation
+      lookback_days: 30             # Days of signal history to analyze
+      percentile: 80                # Percentile threshold (80 = top 20% of signals)
+      min_samples: 10               # Minimum number of signals required for calculation
+      
+      # Hybrid approach weights
+      market_weight: 0.6            # Weight for market metrics (SPY, VIX, breadth)
+      signal_weight: 0.4            # Weight for signal history analysis
+      static_blend: 0.2             # Static baseline blend ratio (stability)
+      
+      # Safety limits
+      floor_threshold: 0.15         # Minimum threshold (safety floor)
+      ceiling_threshold: 0.40       # Maximum threshold (safety ceiling)
+  
+  # Position Sizing (Value-Based) - OPTIMIZED FOR PORTFOLIO ALLOCATION
+  position_sizing:
+    base_position_value: 5000        # Reduced base size for optimizer compatibility
+    min_position_value: 1000         # Minimum position size in dollars  
+    max_position_value: 8000         # Reduced max to prevent risk manager rejections
+    max_size_multiplier: 1.2         # Reduced multiplier for better optimization
+  
+  # Trade Execution Configuration
+  execution:
+    execution_delay: 0.1             # Delay between trades in seconds
+    order_type: "market"             # Order type: market | limit
+    slippage_tolerance: 0.001        # Maximum allowed slippage (0.1%)
+    timeout_seconds: 30              # Order timeout in seconds
+    max_retries: 3                   # Maximum retry attempts for failed orders
+    
+    # Trading hours (UTC)
+    market_hours:
+      open: "14:30"                  # Market open time
+      close: "21:00"                 # Market close time
+      timezone: "UTC"                # Timezone for market hours
+  
+  # Backtesting
+  backtest_start: "2023-01-01"
+  backtest_end: "2024-01-01"
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  format: "{time:YYYY-MM-DD HH:mm:ss} | {level} | {name}:{function}:{line} | {message}"
+  log_file: "logs/trading_system.log"
+  max_file_size: "10 MB"
+  backup_count: 5
+
+# Database Configuration
+database:
+  # SQLite for development, PostgreSQL for production
+  url: "sqlite:///data/trading_system.db"
+  # url: "postgresql://user:password@localhost/trading_db"
+
+# Performance Monitoring
+monitoring:
+  metrics_collection: true
+  performance_reporting: true
+  alert_thresholds:
+    daily_loss: 0.03
+    drawdown: 0.1
+    sharpe_ratio: 0.5
