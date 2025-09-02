@@ -133,14 +133,14 @@ class MarketMetricsAnalyzer:
                 return None
             
             # Calculate SPY returns (ensure scalar values)
-            spy_return_1d = float((spy_data['Close'].iloc[-1] / spy_data['Close'].iloc[-2] - 1))
-            spy_return_5d = float((spy_data['Close'].iloc[-1] / spy_data['Close'].iloc[-6] - 1)) if len(spy_data) >= 6 else 0.0
-            spy_return_30d = float((spy_data['Close'].iloc[-1] / spy_data['Close'].iloc[-31] - 1)) if len(spy_data) >= 31 else 0.0
+            spy_return_1d = (spy_data['Close'].iloc[-1] / spy_data['Close'].iloc[-2] - 1)
+            spy_return_5d = (spy_data['Close'].iloc[-1] / spy_data['Close'].iloc[-6] - 1) if len(spy_data) >= 6 else 0.0
+            spy_return_30d = (spy_data['Close'].iloc[-1] / spy_data['Close'].iloc[-31] - 1) if len(spy_data) >= 31 else 0.0
             
             # Fetch VIX data
             vix_data = yf.download('^VIX', period='1mo', interval='1d', progress=False, auto_adjust=True)
-            vix_current = float(vix_data['Close'].iloc[-1]) if not vix_data.empty else 20.0
-            vix_change_5d = float(vix_current - vix_data['Close'].iloc[-6]) if len(vix_data) >= 6 else 0.0
+            vix_current = vix_data['Close'].iloc[-1] if not vix_data.empty else 20.0
+            vix_change_5d = (vix_current - vix_data['Close'].iloc[-6]) if len(vix_data) >= 6 else 0.0
             
             # Calculate market breadth using sector performance
             market_breadth = self._calculate_market_breadth()
@@ -178,8 +178,8 @@ class MarketMetricsAnalyzer:
                     data = yf.download(etf, period='1mo', interval='1d', progress=False, auto_adjust=True)
                     if len(data) >= 20:
                         # Check if sector is above 20-day moving average
-                        ma_20 = float(data['Close'].rolling(20).mean().iloc[-1])
-                        current_price = float(data['Close'].iloc[-1])
+                        ma_20 = data['Close'].rolling(20).mean().iloc[-1]
+                        current_price = data['Close'].iloc[-1]
                         
                         if current_price > ma_20:
                             positive_sectors += 1
@@ -208,7 +208,7 @@ class MarketMetricsAnalyzer:
                     if len(data) >= 20:
                         # Calculate 20-day return
                         return_20d = (data['Close'].iloc[-1] / data['Close'].iloc[-21] - 1)
-                        sector_strength[sector] = float(return_20d)
+                        sector_strength[sector] = return_20d
                 except Exception as e:
                     logger.debug(f"Failed to calculate strength for {sector}: {e}")
                     sector_strength[sector] = 0.0

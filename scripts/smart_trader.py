@@ -14,10 +14,7 @@ import schedule
 import time
 import signal
 import sys
-import smtplib
 import pytz
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 from datetime import datetime, time as dt_time
 from typing import List, Optional, Dict, Any
 import json
@@ -29,6 +26,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from loguru import logger
 from main import main as trading_main
 from market_scanner import execute_market_scan
+from core.discord_notifications import send_trade_alert, send_portfolio_update, send_error_alert, send_market_scan_results
 
 class SmartTrader:
     """Streamlined daily trading automation"""
@@ -38,7 +36,15 @@ class SmartTrader:
         
         # Set up timezone for US Eastern Time (market timezone)
         self.market_tz = pytz.timezone('US/Eastern')
-        self.local_tz = pytz.timezone('Asia/Singapore')  # SGT
+        
+        # Detect if we're running in Railway (UTC) or local (SGT)
+        import os
+        if os.getenv('RAILWAY_ENVIRONMENT') == 'true' or os.getenv('DEPLOYMENT_MODE') == 'production':
+            self.local_tz = pytz.timezone('UTC')  # Railway uses UTC
+            logger.info("🌍 Detected Railway deployment - using UTC timezone")
+        else:
+            self.local_tz = pytz.timezone('Asia/Singapore')  # SGT for local development
+            logger.info("🌍 Detected local development - using Singapore timezone")
         
         self.market_open = dt_time(9, 30)  # 9:30 AM EST
         self.market_close = dt_time(16, 0)  # 4:00 PM EST
@@ -58,7 +64,8 @@ class SmartTrader:
         now_market = now_local.astimezone(self.market_tz)
         logger.info(f"📊 Smart Trader initialized")
         logger.info(f"🌍 Market timezone: US/Eastern")
-        logger.info(f"🕐 Local time (SGT): {now_local.strftime('%H:%M:%S')}")
+        local_tz_display = 'UTC' if self.local_tz.zone == 'UTC' else 'SGT'
+        logger.info(f"🕐 Local time ({local_tz_display}): {now_local.strftime('%H:%M:%S')}")
         logger.info(f"🕐 Market time (ET): {now_market.strftime('%H:%M:%S')}")
         logger.info(f"Portfolio empty: {self.portfolio_empty}")
         logger.info(f"Current symbols: {self.current_symbols}")
@@ -91,18 +98,36 @@ class SmartTrader:
         return []
     
     def _load_email_config(self) -> Dict[str, str]:
-        """Load email configuration from environment variables"""
+        """Load notification configuration (Discord + SendGrid + SMTP fallbacks)"""
+        # Check notification methods in order of preference for Railway
+        discord_enabled = bool(os.getenv('DISCORD_WEBHOOK_URL'))
+        sendgrid_enabled = bool(os.getenv('SENDGRID_API_KEY'))
+        smtp_requested = os.getenv('EMAIL_NOTIFICATIONS', 'false').lower() == 'true'
+        
         config = {
+            'enabled': discord_enabled or sendgrid_enabled or smtp_requested,
+            'method': 'discord' if discord_enabled else ('sendgrid' if sendgrid_enabled else 'smtp'),
+            'discord_webhook': os.getenv('DISCORD_WEBHOOK_URL', ''),
+            'sendgrid_api_key': os.getenv('SENDGRID_API_KEY', ''),
+            'from_email': os.getenv('FROM_EMAIL', 'trading-bot@yourdomain.com'),
+            'to_email': os.getenv('TO_EMAIL', os.getenv('EMAIL_USERNAME', '')),
+            # Legacy SMTP config for fallback
             'smtp_server': os.getenv('EMAIL_SMTP_SERVER', 'smtp.gmail.com'),
             'smtp_port': int(os.getenv('EMAIL_SMTP_PORT', '587')),
             'username': os.getenv('EMAIL_USERNAME', ''),
-            'password': os.getenv('EMAIL_PASSWORD', ''),
-            'enabled': os.getenv('EMAIL_NOTIFICATIONS', 'false').lower() == 'true'
+            'password': os.getenv('EMAIL_PASSWORD', '')
         }
         
-        if config['enabled'] and not config['username']:
-            logger.warning("📧 Email notifications enabled but EMAIL_USERNAME not set")
-            config['enabled'] = False
+        if config['enabled']:
+            if config['method'] == 'discord':
+                logger.info("✅ Discord notifications enabled (Railway-compatible)")
+            elif config['method'] == 'sendgrid':
+                logger.info("✅ SendGrid notifications enabled (Railway-compatible)")
+            else:
+                logger.info("📧 SMTP notifications enabled (may not work on Railway)")
+                if not config['username']:
+                    logger.warning("📧 Email notifications enabled but EMAIL_USERNAME not set")
+                    config['enabled'] = False
         
         return config
     
@@ -112,6 +137,34 @@ class SmartTrader:
         # For simplicity, not checking weekends/holidays here
         # The trading system will handle that
         return self.market_open <= now <= self.market_close
+    
+    def _schedule_async_task(self, coro_func):
+        """Helper method to schedule async tasks with proper error handling"""
+        try:
+            # Get the current event loop if running, or create a new task
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # Create a task in the running loop
+                task = loop.create_task(coro_func())
+                # Add done callback for error handling
+                task.add_done_callback(self._handle_task_result)
+            else:
+                # If no loop is running, run in a new thread
+                import threading
+                thread = threading.Thread(target=lambda: asyncio.run(coro_func()))
+                thread.start()
+        except Exception as e:
+            logger.error(f"❌ Error scheduling async task {coro_func.__name__}: {e}")
+    
+    def _handle_task_result(self, task):
+        """Handle the result of a scheduled async task"""
+        try:
+            if task.exception():
+                logger.error(f"❌ Scheduled task failed: {task.exception()}")
+            else:
+                logger.debug(f"✅ Scheduled task completed successfully")
+        except Exception as e:
+            logger.error(f"❌ Error handling task result: {e}")
     
     async def morning_pre_market_routine(self):
         """
@@ -773,9 +826,67 @@ class SmartTrader:
             logger.error(f"Failed to send error alert: {e}")
     
     async def _send_email_notification(self, subject: str, body: str):
-        """Send email notification"""
+        """Send notification using SendGrid API or SMTP fallback"""
         if not self.email_config['enabled']:
             return
+        
+        try:
+            if self.email_config['method'] == 'sendgrid':
+                # Use SendGrid API (Railway-compatible)
+                await self._send_sendgrid_notification(subject, body)
+            else:
+                # Fallback to SMTP (may not work on Railway)
+                await self._send_smtp_notification(subject, body)
+                
+        except Exception as e:
+            logger.error(f"Error sending notification: {e}")
+    
+    async def _send_sendgrid_notification(self, subject: str, body: str):
+        """Send notification via SendGrid API (Railway-compatible)"""
+        import requests
+        
+        try:
+            payload = {
+                "personalizations": [
+                    {
+                        "to": [{"email": self.email_config['to_email']}],
+                        "subject": subject
+                    }
+                ],
+                "from": {"email": self.email_config['from_email']},
+                "content": [
+                    {
+                        "type": "text/plain",
+                        "value": body
+                    }
+                ]
+            }
+            
+            headers = {
+                "Authorization": f"Bearer {self.email_config['sendgrid_api_key']}",
+                "Content-Type": "application/json"
+            }
+            
+            response = requests.post(
+                "https://api.sendgrid.com/v3/mail/send",
+                headers=headers,
+                json=payload,
+                timeout=10
+            )
+            
+            if response.status_code == 202:
+                logger.info(f"✅ SendGrid notification sent: {subject}")
+            else:
+                logger.error(f"❌ SendGrid API error: {response.status_code} - {response.text}")
+                
+        except Exception as e:
+            logger.error(f"❌ SendGrid notification failed: {e}")
+    
+    async def _send_smtp_notification(self, subject: str, body: str):
+        """Send notification via SMTP (fallback method)"""
+        import smtplib
+        from email.mime.text import MIMEText
+        from email.mime.multipart import MIMEMultipart
         
         try:
             msg = MIMEMultipart()
@@ -793,10 +904,10 @@ class SmartTrader:
             server.sendmail(self.email_config['username'], self.email_config['username'], text)
             server.quit()
             
-            logger.info(f"📧 Email notification sent: {subject}")
+            logger.info(f"📧 SMTP notification sent: {subject}")
             
         except Exception as e:
-            logger.error(f"Error sending email: {e}")
+            logger.error(f"❌ SMTP notification failed (expected on Railway): {e}")
     
     def _get_market_time_in_local(self, market_time_str: str) -> str:
         """Convert US Eastern Time to local Singapore time for scheduling"""
@@ -821,17 +932,18 @@ class SmartTrader:
         market_open_local = self._get_market_time_in_local("09:30")  # 9:30 AM ET -> SGT
         
         logger.info(f"🌍 Timezone conversion:")
-        logger.info(f"  Pre-market: 08:30 ET → {premarket_local} SGT")
-        logger.info(f"  Market open: 09:30 ET → {market_open_local} SGT")
+        local_tz_name = 'UTC' if self.local_tz.zone == 'UTC' else 'SGT'
+        logger.info(f"  Pre-market: 08:30 ET → {premarket_local} {local_tz_name}")
+        logger.info(f"  Market open: 09:30 ET → {market_open_local} {local_tz_name}")
         
         # Morning pre-market routine (8:30 AM ET)
         schedule.every().day.at(premarket_local).do(
-            lambda: asyncio.create_task(self.morning_pre_market_routine())
+            self._schedule_async_task, self.morning_pre_market_routine
         )
         
         # Market opening routine (9:30 AM ET)
         schedule.every().day.at(market_open_local).do(
-            lambda: asyncio.create_task(self.market_opening_routine())
+            self._schedule_async_task, self.market_opening_routine
         )
         
         if self.portfolio_empty:
@@ -845,14 +957,14 @@ class SmartTrader:
                 scan_time_local = self._get_market_time_in_local(scan_time_et)
                 scan_times_local.append(scan_time_local)
                 schedule.every().day.at(scan_time_local).do(
-                    lambda: asyncio.create_task(self.hourly_scanner_routine())
+                    self._schedule_async_task, self.hourly_scanner_routine
                 )
                 
             logger.info(f"🌍 SWING TRADER - Empty Portfolio Schedule:")
-            logger.info(f"  Pre-market: 8:30 AM ET → {premarket_local} SGT")
-            logger.info(f"  Market opening: 9:30 AM ET → {market_open_local} SGT")
+            logger.info(f"  Pre-market: 8:30 AM ET → {premarket_local} {local_tz_name}")
+            logger.info(f"  Market opening: 9:30 AM ET → {market_open_local} {local_tz_name}")
             for et_time, sgt_time in zip(scan_times_et, scan_times_local):
-                logger.info(f"  {et_time} ET → {sgt_time} SGT")
+                logger.info(f"  {et_time} ET → {sgt_time} {local_tz_name}")
             
             logger.info(f"📅 Scheduled {len(scan_times_local) + 2} tasks (SWING TRADER - empty portfolio)")
             
@@ -867,30 +979,30 @@ class SmartTrader:
                 check_time_local = self._get_market_time_in_local(check_time_et)
                 portfolio_check_times_local.append(check_time_local)
                 schedule.every().day.at(check_time_local).do(
-                    lambda: asyncio.create_task(self.portfolio_check_routine())
+                    self._schedule_async_task, self.portfolio_check_routine
                 )
             
             # Opportunity scan: Once at midday
             opportunity_scan_et = "12:00"  # Midday opportunity scan
             opportunity_scan_local = self._get_market_time_in_local(opportunity_scan_et)
             schedule.every().day.at(opportunity_scan_local).do(
-                lambda: asyncio.create_task(self.hourly_scanner_routine())
+                self._schedule_async_task, self.hourly_scanner_routine
             )
             
             # End-of-day review
             eod_review_et = "16:00"  # Market close review
             eod_review_local = self._get_market_time_in_local(eod_review_et)
             schedule.every().day.at(eod_review_local).do(
-                lambda: asyncio.create_task(self.end_of_day_review())
+                self._schedule_async_task, self.end_of_day_review
             )
                 
             logger.info(f"🌍 SWING TRADER - Normal Portfolio Schedule:")
-            logger.info(f"  Pre-market: 8:30 AM ET → {premarket_local} SGT")
-            logger.info(f"  Market opening: 9:30 AM ET → {market_open_local} SGT")
+            logger.info(f"  Pre-market: 8:30 AM ET → {premarket_local} {local_tz_name}")
+            logger.info(f"  Market opening: 9:30 AM ET → {market_open_local} {local_tz_name}")
             for et_time, sgt_time in zip(portfolio_check_times_et, portfolio_check_times_local):
-                logger.info(f"  Portfolio check: {et_time} ET → {sgt_time} SGT")
-            logger.info(f"  Opportunity scan: {opportunity_scan_et} ET → {opportunity_scan_local} SGT")
-            logger.info(f"  End-of-day review: {eod_review_et} ET → {eod_review_local} SGT")
+                logger.info(f"  Portfolio check: {et_time} ET → {sgt_time} {local_tz_name}")
+            logger.info(f"  Opportunity scan: {opportunity_scan_et} ET → {opportunity_scan_local} {local_tz_name}")
+            logger.info(f"  End-of-day review: {eod_review_et} ET → {eod_review_local} {local_tz_name}")
             
             total_tasks = len(portfolio_check_times_local) + 4  # +4 for pre-market, opening, opportunity, EOD
             logger.info(f"📅 Scheduled {total_tasks} tasks (SWING TRADER - normal mode)")

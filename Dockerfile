@@ -32,11 +32,16 @@ ENV PYTHONUNBUFFERED=1
 
 # Performance optimizations for Railway deployment
 ENV DEPLOYMENT_MODE=production
+ENV RAILWAY_ENVIRONMENT=true
 ENV SENTIMENT_FAST_MODE=true
 ENV DISABLE_ML_MODELS=true
 ENV CACHE_SENTIMENT_RESULTS=true
 ENV PYTHON_GC_THRESHOLD=100
 ENV MALLOC_ARENA_MAX=2
+
+# Notification settings (Discord/SendGrid for Railway compatibility)
+ENV EMAIL_NOTIFICATIONS=true
+# Add DISCORD_WEBHOOK_URL in Railway variables for notifications
 
 # Expose ports for web UI and health checks
 EXPOSE 5000 8081
