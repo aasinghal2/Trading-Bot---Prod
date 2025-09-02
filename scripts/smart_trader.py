@@ -26,7 +26,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from loguru import logger
 from main import main as trading_main
 from market_scanner import execute_market_scan
-from core.discord_notifications import send_trade_alert, send_portfolio_update, send_error_alert, send_market_scan_results
+# Discord notifications disabled - using email notifications only
 
 class SmartTrader:
     """Streamlined daily trading automation"""
