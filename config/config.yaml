@@ -8,13 +8,8 @@ market_data:
     - "alpha_vantage"
     - "polygon"
   
-  # Trading symbols to monitor
-  symbols:
-    - "AAPL"
-    - "GOOGL"
-    - "MSFT"
-    - "TSLA"
-    - "NVDA"
+  # Trading symbols to monitor (empty - will use market scanner)
+  symbols: []
   
   # Data refresh intervals (seconds) - optimized for cloud deployment
   real_time_interval: 300  # 5 minutes for production (was 1 second)
