@@ -54,7 +54,14 @@ SENDGRID_API_KEY=your_sendgrid_api_key_here
 FROM_EMAIL=trading-bot@yourdomain.com
 TO_EMAIL=your_email@gmail.com
 
-# Option 3: SMTP (Legacy - BLOCKED on Railway)
+# Option 3: Mailgun API (Recommended - Railway compatible)
+# Get free account from: https://mailgun.com (5,000 emails/month free)
+MAILGUN_API_KEY=key-your_mailgun_api_key_here
+MAILGUN_DOMAIN=sandboxXXXXX.mailgun.org
+MAILGUN_FROM_EMAIL=trading-bot@sandboxXXXXX.mailgun.org
+# Note: Use your verified domain or sandbox domain from Mailgun dashboard
+
+# Option 4: SMTP (Legacy - BLOCKED on Railway)
 EMAIL_SMTP_SERVER=smtp.gmail.com
 EMAIL_SMTP_PORT=587
 EMAIL_USERNAME=your_email@gmail.com

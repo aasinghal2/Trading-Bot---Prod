@@ -98,15 +98,16 @@ class SmartTrader:
         return []
     
     def _load_email_config(self) -> Dict[str, str]:
-        """Load notification configuration (Discord + SendGrid + SMTP fallbacks)"""
+        """Load notification configuration (Discord + SendGrid + Mailgun + SMTP fallbacks)"""
         # Check notification methods in order of preference for Railway
         discord_enabled = bool(os.getenv('DISCORD_WEBHOOK_URL'))
         sendgrid_enabled = bool(os.getenv('SENDGRID_API_KEY'))
+        mailgun_enabled = bool(os.getenv('MAILGUN_API_KEY') and os.getenv('MAILGUN_DOMAIN'))
         smtp_requested = os.getenv('EMAIL_NOTIFICATIONS', 'false').lower() == 'true'
         
         config = {
-            'enabled': discord_enabled or sendgrid_enabled or smtp_requested,
-            'method': 'discord' if discord_enabled else ('sendgrid' if sendgrid_enabled else 'smtp'),
+            'enabled': discord_enabled or sendgrid_enabled or mailgun_enabled or smtp_requested,
+            'method': 'discord' if discord_enabled else ('sendgrid' if sendgrid_enabled else ('mailgun' if mailgun_enabled else 'smtp')),
             'discord_webhook': os.getenv('DISCORD_WEBHOOK_URL', ''),
             'sendgrid_api_key': os.getenv('SENDGRID_API_KEY', ''),
             'from_email': os.getenv('FROM_EMAIL', 'trading-bot@yourdomain.com'),
@@ -123,6 +124,8 @@ class SmartTrader:
                 logger.info("✅ Discord notifications enabled (Railway-compatible)")
             elif config['method'] == 'sendgrid':
                 logger.info("✅ SendGrid notifications enabled (Railway-compatible)")
+            elif config['method'] == 'mailgun':
+                logger.info("✅ Mailgun notifications enabled (Railway-compatible)")
             else:
                 logger.info("📧 SMTP notifications enabled (may not work on Railway)")
                 if not config['username']:
@@ -826,7 +829,7 @@ class SmartTrader:
             logger.error(f"Failed to send error alert: {e}")
     
     async def _send_email_notification(self, subject: str, body: str):
-        """Send notification using SendGrid API or SMTP fallback"""
+        """Send notification using SendGrid, Mailgun API, or SMTP fallback"""
         if not self.email_config['enabled']:
             return
         
@@ -834,6 +837,9 @@ class SmartTrader:
             if self.email_config['method'] == 'sendgrid':
                 # Use SendGrid API (Railway-compatible)
                 await self._send_sendgrid_notification(subject, body)
+            elif self.email_config['method'] == 'mailgun':
+                # Use Mailgun API (Railway-compatible)
+                await self._send_mailgun_notification(subject, body)
             else:
                 # Fallback to SMTP (may not work on Railway)
                 await self._send_smtp_notification(subject, body)
@@ -881,6 +887,45 @@ class SmartTrader:
                 
         except Exception as e:
             logger.error(f"❌ SendGrid notification failed: {e}")
+    
+    async def _send_mailgun_notification(self, subject: str, body: str):
+        """Send notification via Mailgun API (Railway-compatible)"""
+        import requests
+        
+        try:
+            # Get Mailgun configuration from environment
+            api_key = os.getenv('MAILGUN_API_KEY')
+            domain = os.getenv('MAILGUN_DOMAIN')
+            from_email = os.getenv('MAILGUN_FROM_EMAIL', f'trading-bot@{domain}')
+            to_email = os.getenv('EMAIL_USERNAME', self.email_config['username'])
+            
+            if not api_key or not domain:
+                logger.error("❌ Mailgun API key or domain not configured")
+                return
+            
+            # Mailgun API payload
+            data = {
+                'from': from_email,
+                'to': to_email,
+                'subject': subject,
+                'text': body
+            }
+            
+            # Send via Mailgun API
+            response = requests.post(
+                f"https://api.mailgun.net/v3/{domain}/messages",
+                auth=("api", api_key),
+                data=data,
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                logger.info(f"✅ Mailgun notification sent: {subject}")
+            else:
+                logger.error(f"❌ Mailgun API error: {response.status_code} - {response.text}")
+                
+        except Exception as e:
+            logger.error(f"❌ Mailgun notification failed: {e}")
     
     async def _send_smtp_notification(self, subject: str, body: str):
         """Send notification via SMTP (fallback method)"""
