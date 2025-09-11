@@ -135,11 +135,15 @@ class SmartTrader:
         return config
     
     def is_market_open(self) -> bool:
-        """Check if market is currently open"""
-        now = datetime.now().time()
-        # For simplicity, not checking weekends/holidays here
-        # The trading system will handle that
-        return self.market_open <= now <= self.market_close
+        """Check if market is currently open (weekdays 9:30-16:00 ET)"""
+        # First check if it's a market day (Monday-Friday)
+        if not self._is_market_day():
+            return False
+        
+        # Then check if it's within market hours
+        now_et = datetime.now(self.market_tz)
+        current_time = now_et.time()
+        return self.market_open <= current_time <= self.market_close
     
     def _schedule_async_task(self, coro_func):
         """Helper method to schedule async tasks with proper error handling"""
@@ -177,6 +181,11 @@ class SmartTrader:
         """
         logger.info("🌅 Starting morning pre-market routine...")
         
+        # Check if it's a market day
+        if not self._is_market_day():
+            logger.info("🏖️ Skipping pre-market routine - market closed on weekends")
+            return
+        
         try:
             # Scan and analyze current portfolio
             await self._execute_portfolio_analysis()
@@ -196,6 +205,11 @@ class SmartTrader:
         - Execute in-depth analysis and trades
         """
         logger.info("🚀 Starting market opening routine...")
+        
+        # Check if it's a market day
+        if not self._is_market_day():
+            logger.info("🏖️ Skipping market opening routine - market closed on weekends")
+            return
         
         try:
             # Step 3a: Scan top 50 stocks and update dynamic thresholds
@@ -248,6 +262,11 @@ class SmartTrader:
         """
         logger.info("🔍 Running strategic market scan (SWING TRADER MODE)...")
         
+        # Check if it's a market day
+        if not self._is_market_day():
+            logger.info("🏖️ Skipping strategic scan - market closed on weekends")
+            return
+        
         try:
             # Execute market scan
             await self._execute_market_scan()
@@ -281,6 +300,10 @@ class SmartTrader:
         - Position evaluation for next day
         """
         logger.info("📊 Running end-of-day review (SWING TRADER MODE)...")
+        
+        # Check if it's a market day (but allow EOD review to run on weekends for portfolio status)
+        if not self._is_market_day():
+            logger.info("🏖️ Weekend end-of-day review - showing portfolio status only")
         
         try:
             # Quick portfolio analysis without trading (review only)
@@ -973,6 +996,30 @@ class SmartTrader:
         
         return local_dt.strftime('%H:%M')
     
+    def _is_market_day(self) -> bool:
+        """Check if today is a trading day (Monday-Friday in ET timezone)"""
+        now_et = datetime.now(self.market_tz)
+        weekday = now_et.weekday()  # Monday=0, Sunday=6
+        
+        # Check if it's weekend (Saturday=5, Sunday=6)
+        is_weekend = weekday >= 5
+        
+        if is_weekend:
+            day_name = now_et.strftime('%A')
+            logger.info(f"🏖️ Market closed: Today is {day_name} - no trading")
+            return False
+        
+        # Could add holiday checking here in the future
+        # For now, just check weekends
+        return True
+    
+    def _should_run_scheduled_tasks(self) -> bool:
+        """Check if scheduled tasks should run (only on market days)"""
+        if not self._is_market_day():
+            return False
+        
+        return True
+    
     def schedule_daily_tasks(self):
         """Schedule all daily tasks using market timezone converted to local time"""
         logger.info("📅 Setting up daily trading schedule (timezone-aware)...")
@@ -1078,8 +1125,15 @@ class SmartTrader:
         
         # Run indefinitely
         while self.running:
-            schedule.run_pending()
-            await asyncio.sleep(1)  # Check every second
+            # Only run scheduled tasks on market days (Monday-Friday)
+            if self._should_run_scheduled_tasks():
+                schedule.run_pending()
+            else:
+                # On weekends, just sleep and check again periodically
+                await asyncio.sleep(300)  # Check every 5 minutes on weekends
+                continue
+                
+            await asyncio.sleep(1)  # Check every second on market days
         
         logger.info("👋 Smart Trader stopped")
     
