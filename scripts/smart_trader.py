@@ -292,8 +292,13 @@ class SmartTrader:
                 
                 # Send end-of-day summary email
                 await self._send_end_of_day_summary(portfolio_state)
+                
+                # Debug portfolio state for Railway inspection
+                self.debug_portfolio_state()
             else:
                 logger.info("📊 End-of-day: Portfolio empty, no positions to review")
+                # Still debug even if empty to show current state
+                self.debug_portfolio_state()
             
             logger.info("✅ End-of-day review completed")
             
@@ -1116,6 +1121,52 @@ class SmartTrader:
                 f"Error during immediate portfolio scan: {str(e)}"
             )
 
+    def debug_portfolio_state(self):
+        """Debug method to log current portfolio state for Railway inspection"""
+        try:
+            portfolio_file = "data/portfolio_state.json"
+            if os.path.exists(portfolio_file):
+                with open(portfolio_file, 'r') as f:
+                    portfolio_data = json.load(f)
+                
+                logger.info("🔍 DEBUG: Current Portfolio State")
+                logger.info("=" * 50)
+                logger.info(f"📅 Last Updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                logger.info(f"💰 Cash Balance: ${portfolio_data.get('cash_balance', 0):,.2f}")
+                logger.info(f"🏦 Initial Capital: ${portfolio_data.get('initial_capital', 0):,.2f}")
+                
+                positions = portfolio_data.get('positions', {})
+                logger.info(f"📊 Total Positions: {len(positions)}")
+                
+                total_value = 0
+                for symbol, pos in positions.items():
+                    size = pos.get('size', 0)
+                    current_price = pos.get('current_price', 0)
+                    entry_price = pos.get('entry_price', 0)
+                    market_value = size * current_price
+                    pnl = (current_price - entry_price) * size
+                    total_value += market_value
+                    
+                    logger.info(f"  {symbol}: {size:.2f} shares @ ${current_price:.2f} = ${market_value:,.2f} (P&L: ${pnl:,.2f})")
+                
+                total_account = portfolio_data.get('cash_balance', 0) + total_value
+                total_pnl = total_account - portfolio_data.get('initial_capital', 0)
+                
+                logger.info(f"💼 Total Portfolio Value: ${total_value:,.2f}")
+                logger.info(f"🏆 Total Account Value: ${total_account:,.2f}")
+                logger.info(f"📈 Total P&L: ${total_pnl:,.2f} ({total_pnl/portfolio_data.get('initial_capital', 1)*100:.2f}%)")
+                logger.info("=" * 50)
+                
+                # Also log the raw JSON for technical inspection
+                logger.info("🔍 DEBUG: Raw Portfolio JSON")
+                logger.info(json.dumps(portfolio_data, indent=2, default=str))
+                
+            else:
+                logger.warning("⚠️ DEBUG: Portfolio state file not found")
+                
+        except Exception as e:
+            logger.error(f"❌ DEBUG: Error reading portfolio state: {e}")
+
 
 async def main():
     """Main entry point"""
@@ -1128,6 +1179,8 @@ async def main():
                        help="Test market opening routine")
     parser.add_argument("--test-check", action="store_true",
                        help="Test portfolio check routine")
+    parser.add_argument("--debug-portfolio", action="store_true",
+                       help="Debug portfolio state and display current JSON data")
     parser.add_argument("--run", action="store_true",
                        help="Run continuous smart trading")
     
@@ -1144,6 +1197,9 @@ async def main():
     elif args.test_check:
         logger.info("🧪 Testing portfolio check routine...")
         await trader.portfolio_check_routine()
+    elif args.debug_portfolio:
+        logger.info("🧪 Debugging portfolio state...")
+        trader.debug_portfolio_state()
     elif args.run:
         await trader.run_forever()
     else:
@@ -1152,6 +1208,7 @@ async def main():
         logger.info("  --test-morning    Test morning pre-market routine")
         logger.info("  --test-opening    Test market opening routine") 
         logger.info("  --test-check      Test portfolio check routine")
+        logger.info("  --debug-portfolio Debug and display current portfolio JSON data")
         logger.info("  --run             Run continuous smart trading")
 
 
