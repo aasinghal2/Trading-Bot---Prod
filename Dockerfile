@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first to leverage Docker cache
+# Force rebuild - updated 2025-09-11
 COPY requirements.txt .
 
 # Install Python dependencies
