@@ -561,13 +561,27 @@ class PortfolioManagerAgent(BaseAgent):
         trim_recommendations = []
         for symbol, weight in current_weights.items():
             if weight > self.max_position_size:
-                trim_recommendations.append({
-                    "symbol": symbol,
-                    "action": "trim",
-                    "current_weight": weight,
-                    "target_weight": self.max_position_size,
-                    "reason": f"Over-allocated: {weight:.1%} > {self.max_position_size:.1%} limit"
-                })
+                # Calculate shares to trim based on weight difference
+                weight_to_trim = weight - self.max_position_size
+                total_portfolio_value = self._get_total_portfolio_value()
+                value_to_trim = weight_to_trim * total_portfolio_value
+                
+                # Get current price and calculate shares to sell
+                current_price = self._get_current_price(symbol, market_data) 
+                shares_to_trim = -abs(value_to_trim / current_price) if current_price > 0 else 0
+                
+                if abs(shares_to_trim) >= 0.01:  # Only trim if meaningful amount
+                    trim_recommendations.append({
+                        "symbol": symbol,
+                        "action": "trim",
+                        "size": shares_to_trim,  # Negative for sell order
+                        "current_weight": weight,
+                        "target_weight": self.max_position_size,
+                        "reason": f"Over-allocated: {weight:.1%} > {self.max_position_size:.1%} limit",
+                        "order_type": "market",
+                        "signal_strength": -0.5,  # Negative signal for trim operations
+                        "rationale": f"Trim {abs(shares_to_trim):.2f} shares to maintain position limits"
+                    })
         
         # Candidate symbols: positive signal strength (risk approval comes later)
         candidates: List[str] = []
@@ -797,9 +811,18 @@ class PortfolioManagerAgent(BaseAgent):
         
         for trade in trades:
             try:
-                order = await self._create_and_execute_order(trade["symbol"], trade["size"], 
-                                                            OrderType(trade.get("order_type", "market")), 
-                                                            self._get_current_price(trade["symbol"], market_data),
+                # Safely extract trade parameters
+                symbol = trade.get("symbol")
+                size = trade.get("size", 0)
+                order_type = trade.get("order_type", "market")
+                
+                if not symbol or size == 0:
+                    self.logger.warning(f"Skipping trade with missing symbol or size: {trade}")
+                    continue
+                
+                order = await self._create_and_execute_order(symbol, size, 
+                                                            OrderType(order_type), 
+                                                            self._get_current_price(symbol, market_data),
                                                             is_backtest)
                 if order and order.status == OrderStatus.FILLED:
                     executed_orders.append(order.to_dict())

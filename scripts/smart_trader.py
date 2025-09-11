@@ -444,12 +444,12 @@ class SmartTrader:
             
             # Check for new positions (buys)
             for symbol, data in current_positions.items():
-                current_qty = data.get('quantity', 0)
-                old_qty = old_positions.get(symbol, {}).get('quantity', 0)
+                current_qty = data.get('size', 0)
+                old_qty = old_positions.get(symbol, {}).get('size', 0)
                 
                 if current_qty > old_qty:
                     bought = current_qty - old_qty
-                    avg_price = data.get('average_price', 0)
+                    avg_price = data.get('entry_price', 0)
                     transactions.append({
                         'type': 'BUY',
                         'symbol': symbol,

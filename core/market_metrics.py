@@ -181,7 +181,7 @@ class MarketMetricsAnalyzer:
                         ma_20 = data['Close'].rolling(20).mean().iloc[-1]
                         current_price = data['Close'].iloc[-1]
                         
-                        if current_price > ma_20:
+                        if float(current_price) > float(ma_20):
                             positive_sectors += 1
                         total_sectors += 1
                         

@@ -499,7 +499,7 @@ class TradingOrchestrator:
             logger.warning(f"Could not augment historical data for positions: {e}")
         
         # Generate proposed trades based on analysis
-        proposed_trades = self._generate_proposed_trades(combined_signals)
+        proposed_trades = await self._generate_proposed_trades(combined_signals)
         
         input_data = {
             "portfolio_data": portfolio_data,
@@ -734,7 +734,7 @@ class TradingOrchestrator:
             "contributing_analyses": 0
         }
     
-    def _generate_proposed_trades(self, combined_signals: Dict[str, Any]) -> List[Dict[str, Any]]:
+    async def _generate_proposed_trades(self, combined_signals: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Generate proposed trades based on combined analysis signals."""
         
         proposed_trades = []
@@ -769,7 +769,7 @@ class TradingOrchestrator:
                 
                 # Convert to shares (will be refined by portfolio manager)
                 # This is just for initial trade proposal - final sizing is value-based
-                estimated_price = self._estimate_current_price(symbol, combined_signals)
+                estimated_price = await self._estimate_current_price(symbol, combined_signals)
                 estimated_shares = target_position_value / estimated_price if estimated_price > 0 else 0
                 
                 # Determine trade direction (using estimated shares for now)
@@ -799,7 +799,7 @@ class TradingOrchestrator:
         logger.info(f"Generated {len(proposed_trades)} proposed trades from {len(combined_signals)} analyzed symbols")
         return proposed_trades
     
-    def _estimate_current_price(self, symbol: str, combined_signals: Dict[str, Any]) -> float:
+    async def _estimate_current_price(self, symbol: str, combined_signals: Dict[str, Any]) -> float:
         """Estimate current price for a symbol from recent market data."""
         try:
             # Try to get price from market data in signals
@@ -821,18 +821,18 @@ class TradingOrchestrator:
                         self.logger.debug(f"Using historical close for {symbol}: ${price:.2f}")
                         return price
             
-            # Try to get price from market data agent directly
-            market_agent = self.agents.get("market_data")
-            if market_agent:
-                try:
-                    # Request fresh market data for this symbol
-                    fresh_data = market_agent.get_realtime_data([symbol])
-                    if symbol in fresh_data and "price" in fresh_data[symbol]:
-                        price = float(fresh_data[symbol]["price"])
-                        self.logger.info(f"Retrieved fresh price for {symbol}: ${price:.2f}")
-                        return price
-                except Exception as e:
-                    self.logger.warning(f"Failed to get fresh price for {symbol}: {e}")
+                # Try to get price from market data agent directly
+                market_agent = self.agents.get("market_data")
+                if market_agent:
+                    try:
+                        # Request fresh market data for this symbol
+                        fresh_data = await market_agent.get_live_feed([symbol])
+                        if symbol in fresh_data and "price" in fresh_data[symbol]:
+                            price = float(fresh_data[symbol]["price"])
+                            self.logger.info(f"Retrieved fresh price for {symbol}: ${price:.2f}")
+                            return price
+                    except Exception as e:
+                        self.logger.warning(f"Failed to get fresh price for {symbol}: {e}")
             
             # IMPROVED FALLBACK: Use stock-specific estimates instead of generic $200
             # Based on common stock price ranges
