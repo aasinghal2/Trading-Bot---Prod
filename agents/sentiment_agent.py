@@ -23,8 +23,15 @@ import numpy as np
 import requests
 from bs4 import BeautifulSoup
 import yfinance as yf
-from transformers import pipeline, AutoTokenizer, AutoModelForSequenceClassification
 from loguru import logger
+
+# Try to import transformers, but make it optional for cloud deployments
+try:
+    from transformers import pipeline, AutoTokenizer, AutoModelForSequenceClassification
+    HAS_TRANSFORMERS = True
+except ImportError:
+    HAS_TRANSFORMERS = False
+    logger.warning("⚠️ Transformers not available - using simplified sentiment analysis")
 
 from .base_agent import BaseAgent
 
@@ -117,13 +124,13 @@ class SentimentAgent(BaseAgent):
             # Check if we're in a resource-constrained environment (Railway)
             is_cloud_deployment = os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RENDER") or os.getenv("DEPLOYMENT_MODE") == "production"
             
-            if is_cloud_deployment:
-                # Use lightweight approach for cloud deployment
+            if is_cloud_deployment or not HAS_TRANSFORMERS:
+                # Use lightweight approach for cloud deployment or when transformers not available
                 self.logger.info("Cloud deployment detected - using optimized sentiment analysis")
                 self.sentiment_models = {}  # Will use simple rule-based analysis
                 return
             
-            # Only load heavy models in local development
+            # Only load heavy models in local development when transformers is available
             self.logger.info("Loading NLP models for local development...")
             
             # General sentiment model
