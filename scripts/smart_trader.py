@@ -568,7 +568,8 @@ class SmartTrader:
             from datetime import datetime
             import yfinance as yf
             
-            execution_time = datetime.now()
+            # Use market timezone for user-friendly timestamps
+            execution_time = datetime.now(self.market_tz)
             subject = f"🤖 Trading Bot Execution Report - {len(transactions)} Transaction(s)"
             
             # Get current market prices for unrealized P&L calculation
@@ -746,7 +747,8 @@ class SmartTrader:
             from datetime import datetime
             import yfinance as yf
 
-            execution_time = datetime.now()
+            # Use market timezone for user-friendly timestamps
+            execution_time = datetime.now(self.market_tz)
             subject = f"📊 End-of-Day Portfolio Summary - {execution_time.strftime('%Y-%m-%d')}"
 
             # Get current market prices
@@ -862,7 +864,8 @@ class SmartTrader:
         try:
             from datetime import datetime
             
-            execution_time = datetime.now()
+            # Use market timezone for user-friendly timestamps
+            execution_time = datetime.now(self.market_tz)
             
             # Different subject based on whether trades were executed
             if executed_trades:
@@ -981,7 +984,7 @@ class SmartTrader:
                 f"🚨 TRADING BOT ERROR ALERT",
                 "=" * 50,
                 "",
-                f"📅 Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S %Z')}",
+                f"📅 Time: {datetime.now(self.market_tz).strftime('%Y-%m-%d %H:%M:%S %Z')}",
                 f"🎯 Error Type: {error_type}",
                 f"🔥 Priority: {priority}",
                 f"🤖 Mode: SWING TRADER (Production)",
@@ -1013,7 +1016,7 @@ class SmartTrader:
             body_lines.extend([
                 "",
                 f"🤖 Automated alert from SWING TRADER",
-                f"⏰ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                f"⏰ Generated: {datetime.now(self.market_tz).strftime('%Y-%m-%d %H:%M:%S %Z')}",
                 "=" * 50
             ])
             
@@ -1549,7 +1552,7 @@ class SmartTrader:
                 
                 logger.info("🔍 DEBUG: Current Portfolio State")
                 logger.info("=" * 50)
-                logger.info(f"📅 Last Updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                logger.info(f"📅 Last Updated: {datetime.now(self.market_tz).strftime('%Y-%m-%d %H:%M:%S %Z')}")
                 logger.info(f"💰 Cash Balance: ${portfolio_data.get('cash_balance', 0):,.2f}")
                 logger.info(f"🏦 Initial Capital: ${portfolio_data.get('initial_capital', 0):,.2f}")
                 

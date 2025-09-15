@@ -6,6 +6,7 @@ Replaces SMTP with SendGrid API for email notifications
 import os
 import json
 import requests
+import pytz
 from datetime import datetime
 from typing import Dict, Any, Optional
 from loguru import logger
@@ -15,6 +16,8 @@ class NotificationManager:
     """Manages notifications using Railway-compatible services"""
     
     def __init__(self):
+        # Set up timezone for US Eastern Time (market timezone) for consistent timestamps
+        self.market_tz = pytz.timezone('US/Eastern')
         self.sendgrid_api_key = os.getenv("SENDGRID_API_KEY")
         self.from_email = os.getenv("FROM_EMAIL", "trading-bot@yourdomain.com")
         self.to_email = os.getenv("TO_EMAIL", os.getenv("EMAIL_USERNAME"))
@@ -56,7 +59,7 @@ Total Value: ${trade_details.get('portfolio_value', 'N/A')}
 Cash Remaining: ${trade_details.get('cash_remaining', 'N/A')}
 Active Positions: {trade_details.get('active_positions', 'N/A')}
 
-🕐 Executed: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+🕐 Executed: {datetime.now(self.market_tz).strftime('%Y-%m-%d %H:%M:%S %Z')}
 
 ---
 AI-Powered Trading Bot on Railway
@@ -99,7 +102,7 @@ AI-Powered Trading Bot on Railway
         
         body += f"""
 
-🕐 Updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+🕐 Updated: {datetime.now(self.market_tz).strftime('%Y-%m-%d %H:%M:%S %Z')}
 
 ---
 AI-Powered Trading Bot on Railway
@@ -122,7 +125,7 @@ AI-Powered Trading Bot on Railway
 Error Type: {error_type}
 Message: {error_message}
 
-🕐 Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+🕐 Time: {datetime.now(self.market_tz).strftime('%Y-%m-%d %H:%M:%S %Z')}
 🖥️ Environment: Railway Deployment
 
 Please check the Railway logs for more details:
@@ -167,7 +170,7 @@ Found {len(opportunities)} trading opportunities:
 """
         
         body += f"""
-🕐 Scan completed: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+🕐 Scan completed: {datetime.now(self.market_tz).strftime('%Y-%m-%d %H:%M:%S %Z')}
 
 ---
 AI-Powered Trading Bot Scanner
