@@ -483,17 +483,25 @@ class SmartTrader:
     async def _execute_trading_cycle(self, symbols: List[str]):
         """Execute a single trading cycle for given symbols"""
         if not symbols:
-            logger.warning("No symbols to analyze")
+            logger.info("📊 No symbols to analyze - skipping trading cycle")
+            logger.info("💡 This is expected behavior when portfolio is empty")
             return
         
         original_argv = sys.argv.copy()
         try:
-            sys.argv = [
+            # Construct command line arguments for main.py
+            cmd_args = [
                 'main.py',
-                '--mode', 'single',
-                '--symbols'] + symbols + [
-                '--verbose'
+                '--mode', 'single'
             ]
+            
+            # Only add --symbols if we have symbols to provide
+            if symbols:
+                cmd_args.extend(['--symbols'] + symbols)
+            
+            cmd_args.append('--verbose')
+            
+            sys.argv = cmd_args
             await trading_main()
         finally:
             sys.argv = original_argv

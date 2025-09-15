@@ -28,7 +28,7 @@ async def main():
     parser = argparse.ArgumentParser(description="AI-Powered Multi-Agent Trading System")
     parser.add_argument("--config", default="config/config.yaml", help="Path to configuration file")
     parser.add_argument("--mode", type=str, default="single", choices=["single", "auto", "scan"], help="Run mode: single cycle, auto-trading, or market scan")
-    parser.add_argument("--symbols", nargs="+", help="List of stock symbols to analyze")
+    parser.add_argument("--symbols", nargs="*", help="List of stock symbols to analyze")
     parser.add_argument("--interval", type=int, default=300, help="Interval in seconds for auto-trading")
     parser.add_argument("--output", type=str, help="Output file for backtest results (JSON)")
     parser.add_argument("--verbose", action="store_true", help="Verbose logging")
@@ -102,6 +102,12 @@ async def main():
 async def execute_single_cycle(orchestrator: TradingOrchestrator, symbols: Optional[List[str]], output_file: Optional[str]):
     """Execute a single trading cycle."""
     logger.info("🚀 Starting single trading cycle...")
+    
+    # Early exit if no symbols provided - prevents unnecessary analysis agent initialization
+    if not symbols:
+        logger.info("📊 No symbols provided - skipping trading cycle analysis")
+        logger.info("✅ Trading cycle completed (no analysis needed)")
+        return
     
     logger.info("📊 Executing single trading cycle")
     
