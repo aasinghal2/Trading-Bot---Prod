@@ -208,6 +208,7 @@ class SmartTrader:
         - First: Analyze current portfolio with fresh market data
         - Then: Scan top 50 stocks and update dynamic thresholds  
         - Finally: Find new opportunities and execute trades
+        - Also handles deferred immediate scans from when market was closed
         """
         logger.info("🚀 Starting market opening routine with fresh market data...")
         
@@ -223,6 +224,7 @@ class SmartTrader:
                 await self._execute_portfolio_analysis()
             else:
                 logger.info("📊 Portfolio empty - proceeding to market scan for opportunities")
+                logger.info("🎯 This scan will also serve as the deferred immediate scan if needed")
             
             # Step 2: Scan top 50 stocks and update dynamic thresholds
             logger.info("🔍 Scanning top 50 stocks for new opportunities...")
@@ -230,6 +232,21 @@ class SmartTrader:
             
             # Step 3: Get new opportunities and execute in-depth analysis
             await self._analyze_new_opportunities()
+            
+            # Step 4: If portfolio was empty and we now have positions, reschedule to portfolio mode
+            if self.portfolio_empty:
+                old_portfolio_empty = self.portfolio_empty
+                self.current_symbols = self._load_current_symbols()
+                self.portfolio_empty = len(self.current_symbols) == 0
+                
+                if old_portfolio_empty and not self.portfolio_empty:
+                    logger.success("🎯 Market opening scan successful! Portfolio now has positions from deferred scan")
+                    logger.info(f"📊 New positions: {', '.join(self.current_symbols)}")
+                    
+                    # Reschedule for regular portfolio mode
+                    logger.info("🔄 Rescheduling for regular portfolio monitoring mode...")
+                    schedule.clear()
+                    self.schedule_daily_tasks()
             
             logger.success("✅ Market opening routine completed")
             
@@ -1472,11 +1489,27 @@ class SmartTrader:
         logger.info("👋 Smart Trader stopped")
     
     async def _run_immediate_scan(self):
-        """Run immediate scan when portfolio is empty"""
+        """Run immediate scan when portfolio is empty (only during market hours)"""
         logger.info("🚀 Starting immediate market scan for empty portfolio...")
         
+        # Check if market is open before scanning
+        if not self.is_market_open():
+            logger.info("🌙 Market is closed - deferring immediate scan until market opens")
+            logger.info("📅 Immediate scan will be triggered at next market opening (9:30 AM ET)")
+            
+            # Send notification about deferred scan
+            await self._send_email_notification(
+                "Portfolio Scan Deferred - Market Closed",
+                f"Smart Trader detected empty portfolio but market is currently closed.\n\n"
+                f"🕐 Current time: {datetime.now(self.market_tz).strftime('%Y-%m-%d %H:%M:%S %Z')}\n"
+                f"📅 Market hours: 9:30 AM - 4:00 PM ET (Mon-Fri, excluding holidays)\n\n"
+                f"⏰ Immediate opportunity scan will be triggered when market opens.\n"
+                f"📊 Regular scanning schedule is active and will begin at market open."
+            )
+            return
+        
         try:
-            # Execute market scan
+            # Execute market scan (only when market is open)
             await self._execute_market_scan()
             
             # Analyze and execute on opportunities
@@ -1500,14 +1533,11 @@ class SmartTrader:
                 schedule.clear()
                 self.schedule_daily_tasks()
             else:
-                logger.info("📊 Immediate scan completed - no positions acquired yet, will continue hourly scanning")
+                logger.info("📊 Immediate scan completed - no positions acquired yet, will continue regular scanning")
             
         except Exception as e:
             logger.error(f"❌ Error in immediate scan: {e}")
-            await self._send_email_notification(
-                "Immediate Scan Error",
-                f"Error during immediate portfolio scan: {str(e)}"
-            )
+            await self._send_error_alert("Immediate Scan Error", str(e), critical=False)
 
     def debug_portfolio_state(self):
         """Debug method to log current portfolio state for Railway inspection"""
