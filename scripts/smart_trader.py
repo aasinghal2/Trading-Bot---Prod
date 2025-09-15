@@ -177,26 +177,30 @@ class SmartTrader:
     
     async def morning_pre_market_routine(self):
         """
-        Step 1: Morning pre-market routine (before 9:30 AM)
+        LEGACY TEST FUNCTION: Pre-market routine (NOT SCHEDULED - testing only)
         - Scan current portfolio
         - Execute trades based on recommendations
+        
+        NOTE: This function is not scheduled in production. Use --test-morning for testing only.
+        The actual first analysis happens at market opening (9:30 AM ET) for data accuracy.
         """
-        logger.info("🌅 Starting morning pre-market routine...")
+        logger.info("🧪 TESTING morning pre-market routine (NOT part of normal schedule)...")
+        logger.warning("⚠️ Note: Pre-market analysis uses potentially stale data. Production starts at market open.")
         
         # Check if it's a market day
         if not self._is_market_day():
-            logger.info("🏖️ Skipping pre-market routine - market closed on weekends")
+            logger.info("🏖️ Skipping pre-market test - market closed on weekends")
             return
         
         try:
             # Scan and analyze current portfolio
             await self._execute_portfolio_analysis()
             
-            logger.success("✅ Morning pre-market routine completed")
+            logger.success("✅ Morning pre-market TEST completed (not part of production schedule)")
             
         except Exception as e:
-            logger.error(f"❌ Error in morning pre-market routine: {e}")
-            await self._send_error_alert("Morning Pre-Market Error", str(e), critical=True)
+            logger.error(f"❌ Error in morning pre-market test: {e}")
+            await self._send_error_alert("Morning Pre-Market Test Error", str(e), critical=False)
     
     async def market_opening_routine(self):
         """
@@ -684,8 +688,12 @@ class SmartTrader:
             
             body = "\n".join(body_lines)
             
-            await self._send_email_notification(subject, body)
-            logger.success(f"📧 Comprehensive transaction email sent for {len(transactions)} transactions")
+            try:
+                await self._send_email_notification(subject, body)
+                logger.success(f"📧 Comprehensive transaction email sent for {len(transactions)} transactions")
+            except Exception as email_error:
+                logger.error(f"Failed to send transaction email: {email_error}")
+                # Don't re-raise - we've already logged the transaction details
             
         except Exception as e:
             logger.error(f"Error sending transaction email: {e}")
@@ -792,13 +800,17 @@ class SmartTrader:
                 "=" * 50,
                 "🤖 SWING TRADER - Automated Daily Summary",
                 f"⏰ Generated: {execution_time.strftime('%Y-%m-%d %H:%M:%S')}",
-                "🎯 Next scan: Tomorrow's pre-market routine",
+                "🎯 Next scan: Tomorrow's market opening routine (9:30 AM ET)",
                 "=" * 50
             ])
 
             body = "\n".join(body_lines)
-            await self._send_email_notification(subject, body)
-            logger.success("📧 End-of-day summary email sent")
+            try:
+                await self._send_email_notification(subject, body)
+                logger.success("📧 End-of-day summary email sent")
+            except Exception as email_error:
+                logger.error(f"Failed to send end-of-day summary email: {email_error}")
+                # Don't re-raise - continue with debug logging
 
         except Exception as e:
             logger.error(f"Error sending end-of-day summary email: {e}")
@@ -1030,9 +1042,8 @@ class SmartTrader:
         """Schedule all daily tasks using market timezone converted to local time"""
         logger.info("📅 Setting up daily trading schedule (timezone-aware)...")
         
-        # Convert US market times to local Singapore times
-        premarket_local = self._get_market_time_in_local("08:30")  # 8:30 AM ET -> SGT
-        market_open_local = self._get_market_time_in_local("09:30")  # 9:30 AM ET -> SGT
+        # Convert US market times to local timezone
+        market_open_local = self._get_market_time_in_local("09:30")  # 9:30 AM ET -> local time
         
         logger.info(f"🌍 Timezone conversion:")
         local_tz_name = 'UTC' if self.local_tz.zone == 'UTC' else 'SGT'
@@ -1229,7 +1240,7 @@ async def main():
     
     parser = argparse.ArgumentParser(description="Smart Trading Automation")
     parser.add_argument("--test-morning", action="store_true", 
-                       help="Test morning pre-market routine")
+                       help="Test legacy pre-market routine (NOT part of production schedule)")
     parser.add_argument("--test-opening", action="store_true",
                        help="Test market opening routine")
     parser.add_argument("--test-check", action="store_true",
@@ -1260,7 +1271,7 @@ async def main():
     else:
         logger.info("🤖 Smart Trader")
         logger.info("Usage:")
-        logger.info("  --test-morning    Test morning pre-market routine")
+        logger.info("  --test-morning    Test legacy pre-market routine (NOT in production schedule)")
         logger.info("  --test-opening    Test market opening routine") 
         logger.info("  --test-check      Test portfolio check routine")
         logger.info("  --debug-portfolio Debug and display current portfolio JSON data")
