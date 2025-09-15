@@ -374,6 +374,14 @@ class SmartTrader:
                     new_symbols = [rec['symbol'] for rec in buy_recommendations[:10]]  # Top 10 buy recommendations
                     logger.info(f"🎯 Found {len(new_symbols)} buy opportunities: {', '.join(new_symbols)}")
                     
+                    # CRITICAL: Check if market is open before executing trades
+                    if not self.is_market_open():
+                        logger.warning("🌙 Market is closed - scanning found opportunities but will not execute trades until market opens")
+                        logger.info(f"📊 Opportunities found but not traded: {', '.join(new_symbols)}")
+                        # Send notification about found opportunities but no trades
+                        await self._send_scan_success_notification(scan_data, executed_trades=False, reason="Market Closed")
+                        return
+                    
                     # Store portfolio state before trading
                     old_portfolio_state = await self._get_portfolio_state()
                     
@@ -382,8 +390,13 @@ class SmartTrader:
                     
                     # Check for transactions and send notifications
                     await self._check_and_notify_transactions(old_portfolio_state, "Market Scan")
+                    
+                    # Send scan success notification with trades executed
+                    await self._send_scan_success_notification(scan_data, executed_trades=True)
                 else:
                     logger.info("📊 No buy recommendations found in market scan")
+                    # Send scan success notification for no opportunities
+                    await self._send_scan_success_notification(scan_data, executed_trades=False, reason="No Strong Signals")
                     
             except Exception as e:
                 logger.warning(f"Could not read market scan results: {e}")
@@ -419,6 +432,14 @@ class SmartTrader:
     async def _execute_portfolio_analysis(self):
         """Execute trading cycle on current portfolio symbols"""
         logger.info(f"📊 Analyzing portfolio symbols: {', '.join(self.current_symbols)}")
+        
+        # CRITICAL: Check if market is open before executing trades on portfolio
+        if not self.is_market_open():
+            logger.warning("🌙 Market is closed - portfolio analysis will run in review-only mode (no trades)")
+            # Just log portfolio status but don't trade
+            portfolio_state = await self._get_portfolio_state()
+            await self._send_end_of_day_summary(portfolio_state)
+            return
         
         # Store portfolio state before trading
         old_portfolio_state = await self._get_portfolio_state()
@@ -815,6 +836,118 @@ class SmartTrader:
         except Exception as e:
             logger.error(f"Error sending end-of-day summary email: {e}")
 
+    async def _send_scan_success_notification(self, scan_data: Dict[str, Any], executed_trades: bool = True, reason: str = ""):
+        """Send formatted scan success notification email"""
+        if not self.email_config['enabled']:
+            logger.info("📧 Email notifications disabled")
+            return
+        
+        try:
+            from datetime import datetime
+            
+            execution_time = datetime.now()
+            
+            # Different subject based on whether trades were executed
+            if executed_trades:
+                subject = f"🔍 Market Scan Complete - {len(scan_data.get('buy_recommendations', []))} Opportunities Found & Analyzed"
+            else:
+                subject = f"🔍 Market Scan Complete - {len(scan_data.get('buy_recommendations', []))} Opportunities Found ({reason})"
+            
+            # Build comprehensive email body using the same format as transaction emails
+            body_lines = [
+                "🔍 AI TRADING BOT - MARKET SCAN REPORT",
+                "=" * 60,
+                "",
+                f"📅 Scan Date & Time: {execution_time.strftime('%Y-%m-%d %H:%M:%S %Z')}",
+                f"🎯 Scan Status: {'Completed with Analysis' if executed_trades else f'Completed - {reason}'}",
+                f"📊 Opportunities Found: {len(scan_data.get('buy_recommendations', []))}",
+                "",
+                "=" * 60,
+                "📈 SCAN SUMMARY",
+                "=" * 60
+            ]
+            
+            # Add scan statistics
+            scan_summary = scan_data.get('scan_summary', {})
+            body_lines.extend([
+                f"⏱️  Scan Duration: {scan_summary.get('scan_time_seconds', 0):.2f} seconds",
+                f"🎯 Symbols Scanned: {scan_summary.get('symbols_scanned', 0)}",
+                f"✅ Passed Filters: {scan_summary.get('symbols_filtered', 0)}",
+                f"📈 Successfully Analyzed: {scan_summary.get('symbols_analyzed', 0)}",
+                "",
+                "=" * 60,
+                "🏆 TOP OPPORTUNITIES",
+                "=" * 60
+            ])
+            
+            # Add buy recommendations details
+            buy_recommendations = scan_data.get('buy_recommendations', [])
+            if buy_recommendations:
+                for i, rec in enumerate(buy_recommendations[:10], 1):  # Top 10
+                    symbol = rec.get('symbol', 'Unknown')
+                    signal_strength = rec.get('signal_strength', 0)
+                    price = rec.get('current_price', 0)
+                    reason = rec.get('recommendation_reason', 'Strong signal detected')
+                    
+                    # Determine signal emoji
+                    if signal_strength > 0.7:
+                        signal_emoji = "🟢"
+                    elif signal_strength > 0.4:
+                        signal_emoji = "🟡"
+                    else:
+                        signal_emoji = "🔴"
+                    
+                    body_lines.extend([
+                        f"",
+                        f"{signal_emoji} {i}. {symbol}",
+                        f"   Signal Strength: {signal_strength:.3f}",
+                        f"   Current Price: ${price:.2f}",
+                        f"   Reason: {reason}"
+                    ])
+                
+                # Add trading status
+                body_lines.extend([
+                    "",
+                    "=" * 60,
+                    "⚡ TRADING STATUS",
+                    "=" * 60
+                ])
+                
+                if executed_trades:
+                    body_lines.append("✅ Opportunities were sent for in-depth analysis and potential trading")
+                else:
+                    body_lines.extend([
+                        f"⏸️  Trading paused: {reason}",
+                        "📊 Opportunities saved for next market session"
+                    ])
+            else:
+                body_lines.extend([
+                    "",
+                    "📊 No strong buy opportunities found in this scan",
+                    "🔍 Will continue monitoring for better signals"
+                ])
+            
+            # Add footer
+            body_lines.extend([
+                "",
+                "=" * 60,
+                "🤖 AI TRADING BOT - Market Scanner",
+                f"⏰ Generated: {execution_time.strftime('%Y-%m-%d %H:%M:%S')}",
+                "🎯 Next scan: Every market session",
+                "=" * 60
+            ])
+            
+            body = "\n".join(body_lines)
+            await self._send_email_notification(subject, body)
+            
+            if executed_trades:
+                logger.success("📧 Market scan success email sent (with trades)")
+            else:
+                logger.success(f"📧 Market scan success email sent ({reason})")
+            
+        except Exception as e:
+            logger.error(f"Error sending scan success notification: {e}")
+
     async def _send_error_alert(self, error_type: str, error_message: str, critical: bool = False):
         """Send critical error alerts via email for production monitoring"""
         if not self.email_config['enabled']:
@@ -1015,7 +1148,7 @@ class SmartTrader:
         return local_dt.strftime('%H:%M')
     
     def _is_market_day(self) -> bool:
-        """Check if today is a trading day (Monday-Friday in ET timezone)"""
+        """Check if today is a trading day (Monday-Friday, excluding US market holidays)"""
         now_et = datetime.now(self.market_tz)
         weekday = now_et.weekday()  # Monday=0, Sunday=6
         
@@ -1027,9 +1160,198 @@ class SmartTrader:
             logger.info(f"🏖️ Market closed: Today is {day_name} - no trading")
             return False
         
-        # Could add holiday checking here in the future
-        # For now, just check weekends
+        # Check for US market holidays
+        if self._is_market_holiday(now_et):
+            return False
+        
         return True
+    
+    def _is_market_holiday(self, date_et) -> bool:
+        """Check if the given date is a US market holiday"""
+        try:
+            # Try to use pandas_market_calendars if available (most accurate)
+            try:
+                import pandas_market_calendars as mcal
+                nyse = mcal.get_calendar('NYSE')
+                # Check if the date is a valid trading day
+                trading_days = nyse.valid_days(start_date=date_et.date(), end_date=date_et.date())
+                is_trading_day = len(trading_days) > 0
+                
+                if not is_trading_day:
+                    logger.info(f"🏖️ Market closed: {date_et.strftime('%Y-%m-%d')} is a market holiday - no trading")
+                    return True
+                return False
+                
+            except ImportError:
+                # Fallback to manual holiday detection if pandas_market_calendars not available
+                return self._is_market_holiday_manual(date_et)
+                
+        except Exception as e:
+            logger.warning(f"Holiday detection error: {e}. Assuming market is open.")
+            return False
+    
+    def _is_market_holiday_manual(self, date_et) -> bool:
+        """Manual detection of major US market holidays"""
+        import calendar
+        
+        year = date_et.year
+        month = date_et.month
+        day = date_et.day
+        
+        # New Year's Day (January 1, or Monday if falls on weekend)
+        if month == 1:
+            if day == 1 and date_et.weekday() < 5:  # Weekday
+                logger.info(f"🏖️ Market closed: New Year's Day - no trading")
+                return True
+            elif day == 2 and date_et.weekday() == 0:  # Monday after weekend New Year's
+                logger.info(f"🏖️ Market closed: New Year's Day (observed) - no trading")
+                return True
+            elif day == 3 and date_et.weekday() == 0 and datetime(year, 1, 1).weekday() == 5:  # Monday after Saturday New Year's
+                logger.info(f"🏖️ Market closed: New Year's Day (observed) - no trading")
+                return True
+        
+        # Martin Luther King Jr. Day (Third Monday in January)
+        if month == 1:
+            third_monday = self._get_nth_weekday(year, month, 2, 0)  # 2 = third occurrence, 0 = Monday
+            if day == third_monday:
+                logger.info(f"🏖️ Market closed: Martin Luther King Jr. Day - no trading")
+                return True
+        
+        # Presidents' Day (Third Monday in February)
+        if month == 2:
+            third_monday = self._get_nth_weekday(year, month, 2, 0)  # 2 = third occurrence, 0 = Monday
+            if day == third_monday:
+                logger.info(f"🏖️ Market closed: Presidents' Day - no trading")
+                return True
+        
+        # Good Friday (Friday before Easter - complex calculation)
+        good_friday = self._get_good_friday(year)
+        if date_et.date() == good_friday:
+            logger.info(f"🏖️ Market closed: Good Friday - no trading")
+            return True
+        
+        # Memorial Day (Last Monday in May)
+        if month == 5:
+            last_monday = self._get_last_weekday(year, month, 0)  # 0 = Monday
+            if day == last_monday:
+                logger.info(f"🏖️ Market closed: Memorial Day - no trading")
+                return True
+        
+        # Juneteenth (June 19, or Monday if falls on weekend)
+        if month == 6:
+            if day == 19 and date_et.weekday() < 5:  # Weekday
+                logger.info(f"🏖️ Market closed: Juneteenth - no trading")
+                return True
+            elif day == 20 and date_et.weekday() == 0:  # Monday after weekend
+                logger.info(f"🏖️ Market closed: Juneteenth (observed) - no trading")
+                return True
+            elif day == 21 and date_et.weekday() == 0 and datetime(year, 6, 19).weekday() == 5:  # Monday after Saturday
+                logger.info(f"🏖️ Market closed: Juneteenth (observed) - no trading")
+                return True
+        
+        # Independence Day (July 4, or Monday if falls on weekend)
+        if month == 7:
+            if day == 4 and date_et.weekday() < 5:  # Weekday
+                logger.info(f"🏖️ Market closed: Independence Day - no trading")
+                return True
+            elif day == 5 and date_et.weekday() == 0:  # Monday after weekend
+                logger.info(f"🏖️ Market closed: Independence Day (observed) - no trading")
+                return True
+            elif day == 6 and date_et.weekday() == 0 and datetime(year, 7, 4).weekday() == 5:  # Monday after Saturday
+                logger.info(f"🏖️ Market closed: Independence Day (observed) - no trading")
+                return True
+        
+        # Labor Day (First Monday in September)
+        if month == 9:
+            first_monday = self._get_nth_weekday(year, month, 0, 0)  # 0 = first occurrence, 0 = Monday
+            if day == first_monday:
+                logger.info(f"🏖️ Market closed: Labor Day - no trading")
+                return True
+        
+        # Thanksgiving (Fourth Thursday in November)
+        if month == 11:
+            fourth_thursday = self._get_nth_weekday(year, month, 3, 3)  # 3 = fourth occurrence, 3 = Thursday
+            if day == fourth_thursday:
+                logger.info(f"🏖️ Market closed: Thanksgiving Day - no trading")
+                return True
+        
+        # Christmas Day (December 25, or Monday if falls on weekend)
+        if month == 12:
+            if day == 25 and date_et.weekday() < 5:  # Weekday
+                logger.info(f"🏖️ Market closed: Christmas Day - no trading")
+                return True
+            elif day == 26 and date_et.weekday() == 0:  # Monday after weekend
+                logger.info(f"🏖️ Market closed: Christmas Day (observed) - no trading")
+                return True
+            elif day == 27 and date_et.weekday() == 0 and datetime(year, 12, 25).weekday() == 5:  # Monday after Saturday
+                logger.info(f"🏖️ Market closed: Christmas Day (observed) - no trading")
+                return True
+        
+        return False
+    
+    def _get_nth_weekday(self, year: int, month: int, n: int, weekday: int) -> int:
+        """Get the nth occurrence of a weekday in a month (0=first, 1=second, etc.)"""
+        import calendar
+        
+        # Get the first day of the month and its weekday
+        first_day = datetime(year, month, 1)
+        first_weekday = first_day.weekday()
+        
+        # Calculate the first occurrence of the target weekday
+        days_ahead = weekday - first_weekday
+        if days_ahead < 0:  # Target day already happened this week
+            days_ahead += 7
+        
+        # Add weeks to get the nth occurrence
+        target_day = 1 + days_ahead + (n * 7)
+        
+        # Make sure we don't exceed the month
+        days_in_month = calendar.monthrange(year, month)[1]
+        if target_day > days_in_month:
+            return None
+        
+        return target_day
+    
+    def _get_last_weekday(self, year: int, month: int, weekday: int) -> int:
+        """Get the last occurrence of a weekday in a month"""
+        import calendar
+        
+        # Get the last day of the month
+        last_day = calendar.monthrange(year, month)[1]
+        last_date = datetime(year, month, last_day)
+        
+        # Find the last occurrence of the weekday
+        days_back = (last_date.weekday() - weekday) % 7
+        target_day = last_day - days_back
+        
+        return target_day
+    
+    def _get_good_friday(self, year: int):
+        """Calculate Good Friday (Friday before Easter)"""
+        # Easter calculation using anonymous Gregorian algorithm
+        a = year % 19
+        b = year // 100
+        c = year % 100
+        d = b // 4
+        e = b % 4
+        f = (b + 8) // 25
+        g = (b - f + 1) // 3
+        h = (19 * a + b - d - g + 15) % 30
+        i = c // 4
+        k = c % 4
+        l = (32 + 2 * e + 2 * i - h - k) % 7
+        m = (a + 11 * h + 22 * l) // 451
+        month = (h + l - 7 * m + 114) // 31
+        day = ((h + l - 7 * m + 114) % 31) + 1
+        
+        # Easter Sunday
+        easter = datetime(year, month, day).date()
+        
+        # Good Friday is 2 days before Easter
+        from datetime import timedelta
+        good_friday = easter - timedelta(days=2)
+        
+        return good_friday
     
     def _should_run_scheduled_tasks(self) -> bool:
         """Check if scheduled tasks should run (only on market days)"""
