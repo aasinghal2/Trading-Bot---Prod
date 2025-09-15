@@ -2,11 +2,13 @@
 """
 Smart Trading Automation - Streamlined Daily Trading Bot
 
-This script implements your exact requirements:
-1. Every morning before trading begins -> scan current portfolio and execute trades
-2. Every morning post trading begins, check portfolio every 15 minutes  
-3. Before first check, scan top 50 stocks and update dynamic threshold for new opportunities
+This script implements optimized trading requirements:
+1. Market open (9:30 AM ET) -> analyze portfolio with fresh data + scan opportunities
+2. Every 15 minutes during market hours -> check portfolio and execute trades  
+3. Scan top 50 stocks and update dynamic thresholds for new opportunities
 4. Send new opportunities for in-depth analysis and execute based on recommendations
+
+Key improvement: No pre-market analysis to ensure data accuracy
 """
 
 import asyncio
@@ -198,13 +200,12 @@ class SmartTrader:
     
     async def market_opening_routine(self):
         """
-        Step 3: Market opening routine (at 9:30 AM)
-        - Scan top 50 stocks
-        - Update dynamic thresholds  
-        - Find new opportunities
-        - Execute in-depth analysis and trades
+        Market opening routine (at 9:30 AM) - Combined portfolio analysis and market scan
+        - First: Analyze current portfolio with fresh market data
+        - Then: Scan top 50 stocks and update dynamic thresholds  
+        - Finally: Find new opportunities and execute trades
         """
-        logger.info("🚀 Starting market opening routine...")
+        logger.info("🚀 Starting market opening routine with fresh market data...")
         
         # Check if it's a market day
         if not self._is_market_day():
@@ -212,13 +213,18 @@ class SmartTrader:
             return
         
         try:
-            # Step 3a: Scan top 50 stocks and update dynamic thresholds
-            logger.info("🔍 Scanning top 50 stocks for new opportunities...")
+            # Step 1: Analyze current portfolio with fresh market data (was pre-market)
+            if not self.portfolio_empty:
+                logger.info("📊 Analyzing current portfolio with fresh market data...")
+                await self._execute_portfolio_analysis()
+            else:
+                logger.info("📊 Portfolio empty - proceeding to market scan for opportunities")
             
-            # Execute market scan using existing functionality
+            # Step 2: Scan top 50 stocks and update dynamic thresholds
+            logger.info("🔍 Scanning top 50 stocks for new opportunities...")
             await self._execute_market_scan()
             
-            # Step 3b: Get new opportunities and execute in-depth analysis
+            # Step 3: Get new opportunities and execute in-depth analysis
             await self._analyze_new_opportunities()
             
             logger.success("✅ Market opening routine completed")
@@ -1030,13 +1036,10 @@ class SmartTrader:
         
         logger.info(f"🌍 Timezone conversion:")
         local_tz_name = 'UTC' if self.local_tz.zone == 'UTC' else 'SGT'
-        logger.info(f"  Pre-market: 08:30 ET → {premarket_local} {local_tz_name}")
-        logger.info(f"  Market open: 09:30 ET → {market_open_local} {local_tz_name}")
+        logger.info(f"  Market open (first check): 09:30 ET → {market_open_local} {local_tz_name}")
+        logger.info("  📈 Portfolio analysis will use fresh market data at market open")
         
-        # Morning pre-market routine (8:30 AM ET)
-        schedule.every().day.at(premarket_local).do(
-            self._schedule_async_task, self.morning_pre_market_routine
-        )
+        # Skip pre-market routine - start analysis when market opens for accurate data
         
         # Market opening routine (9:30 AM ET)
         schedule.every().day.at(market_open_local).do(
@@ -1058,15 +1061,14 @@ class SmartTrader:
                 )
                 
             logger.info(f"🌍 SWING TRADER - Empty Portfolio Schedule:")
-            logger.info(f"  Pre-market: 8:30 AM ET → {premarket_local} {local_tz_name}")
-            logger.info(f"  Market opening: 9:30 AM ET → {market_open_local} {local_tz_name}")
+            logger.info(f"  Market opening (first check): 9:30 AM ET → {market_open_local} {local_tz_name}")
             for et_time, sgt_time in zip(scan_times_et, scan_times_local):
                 logger.info(f"  {et_time} ET → {sgt_time} {local_tz_name}")
             
-            logger.info(f"📅 Scheduled {len(scan_times_local) + 2} tasks (SWING TRADER - empty portfolio)")
+            logger.info(f"📅 Scheduled {len(scan_times_local) + 1} tasks (SWING TRADER - empty portfolio)")
             
         else:
-            # SWING TRADER MODE - Normal Portfolio: 7 operations/day
+            # SWING TRADER MODE - Normal Portfolio: 6 operations/day
             logger.info("📊 SWING TRADER MODE - Portfolio monitoring")
             
             # Strategic portfolio checks: Morning, Midday, Afternoon, Pre-close, End-of-day
@@ -1094,16 +1096,15 @@ class SmartTrader:
             )
                 
             logger.info(f"🌍 SWING TRADER - Normal Portfolio Schedule:")
-            logger.info(f"  Pre-market: 8:30 AM ET → {premarket_local} {local_tz_name}")
-            logger.info(f"  Market opening: 9:30 AM ET → {market_open_local} {local_tz_name}")
+            logger.info(f"  Market opening (first check): 9:30 AM ET → {market_open_local} {local_tz_name}")
             for et_time, sgt_time in zip(portfolio_check_times_et, portfolio_check_times_local):
                 logger.info(f"  Portfolio check: {et_time} ET → {sgt_time} {local_tz_name}")
             logger.info(f"  Opportunity scan: {opportunity_scan_et} ET → {opportunity_scan_local} {local_tz_name}")
             logger.info(f"  End-of-day review: {eod_review_et} ET → {eod_review_local} {local_tz_name}")
             
-            total_tasks = len(portfolio_check_times_local) + 4  # +4 for pre-market, opening, opportunity, EOD
+            total_tasks = len(portfolio_check_times_local) + 3  # +3 for opening, opportunity, EOD (no pre-market)
             logger.info(f"📅 Scheduled {total_tasks} tasks (SWING TRADER - normal mode)")
-            logger.info("🎯 SWING TRADER: 7 operations/day (77% reduction from 30/day)")
+            logger.info("🎯 SWING TRADER: 6 operations/day (80% reduction from 30/day)")
             logger.info("💰 Estimated savings: 70% on cloud costs, safe API usage")
     
     async def run_forever(self):
