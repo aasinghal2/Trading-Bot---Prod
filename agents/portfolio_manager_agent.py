@@ -1287,8 +1287,8 @@ class PortfolioManagerAgent(BaseAgent):
         
         self.trade_history.append(closing_trade)
         
-        # Update cash balance
-        self.cash_balance += abs(position.size) * exit_price
+        # NOTE: Cash balance is already updated by _create_and_execute_order()
+        # Removing duplicate cash update to fix 2X cash increase bug
         
         # Remove position
         del self.positions[symbol]
