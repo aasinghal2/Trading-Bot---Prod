@@ -328,6 +328,25 @@ def display_cycle_results(result: dict):
                             print(f"   📦 Total Shares Bought (this cycle): {total_bought_shares:.2f}")
                         if cash_remaining is not None:
                             print(f"   💵 Cash Remaining: ${cash_remaining:,.2f}")
+                            
+                        # Enhanced Performance Metrics
+                        try:
+                            summary = pdata.get('portfolio_summary', {}) if isinstance(pdata.get('portfolio_summary', {}), dict) else {}
+                            perf_metrics = summary.get('performance_metrics', {}) if isinstance(summary.get('performance_metrics', {}), dict) else {}
+                            
+                            if perf_metrics:
+                                sharpe = perf_metrics.get('sharpe_ratio', 0)
+                                sortino = perf_metrics.get('sortino_ratio', 0)
+                                max_dd = perf_metrics.get('max_drawdown_pct', 0)
+                                win_rate = perf_metrics.get('win_rate', 0)
+                                
+                                sharpe_emoji = "✅" if sharpe > 1.0 else "⚠️" if sharpe > 0.5 else "❌"
+                                sortino_emoji = "✅" if sortino > 1.5 else "⚠️" if sortino > 1.0 else "❌"
+                                
+                                print(f"   📊 Performance: Sharpe {sharpe:.2f} {sharpe_emoji}, Sortino {sortino:.2f} {sortino_emoji}")
+                                print(f"   📉 Risk: Max DD {max_dd:.1%}, Win Rate {win_rate:.1%}")
+                        except Exception:
+                            pass
                 except Exception:
                     pass
 

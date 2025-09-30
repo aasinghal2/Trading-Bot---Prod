@@ -21,6 +21,7 @@ from loguru import logger
 
 from .base_agent import BaseAgent
 from core.utils.json_utils import safe_json_dump
+from core.performance_analytics import PerformanceAnalytics
 import json
 import os
 import asyncio
@@ -180,6 +181,12 @@ class PortfolioManagerAgent(BaseAgent):
         # Performance tracking
         self.portfolio_history: List[Dict[str, Any]] = []
         self.performance_metrics: Dict[str, float] = {}
+        
+        # Enhanced Performance Analytics
+        self.performance_analytics = PerformanceAnalytics(
+            initial_capital=self.initial_capital,
+            risk_free_rate=0.02  # 2% annual risk-free rate
+        )
         
         # Risk limits (inherited from config)
         self.max_position_size = config.get("max_position_size", 0.1)
@@ -1190,6 +1197,14 @@ class PortfolioManagerAgent(BaseAgent):
             }
             self.trade_history.append(trade_record)
             
+            # Update performance analytics for individual trades
+            if size < 0:  # Sell order - calculate realized P&L
+                if symbol in self.positions:
+                    position = self.positions[symbol]
+                    # Calculate realized P&L based on entry price
+                    realized_pnl = (current_price - position.entry_price) * abs(size)
+                    self.performance_analytics.add_trade_return(realized_pnl, trade_value)
+            
             self.logger.info(f"Executed {order_type.value} order: {size} shares of {symbol} at ${current_price:.2f}")
             return order
             
@@ -1470,11 +1485,14 @@ class PortfolioManagerAgent(BaseAgent):
         )
 
     def _get_portfolio_summary(self) -> Dict[str, Any]:
-        """Get a summary of the current portfolio state."""
+        """Get a summary of the current portfolio state with enhanced performance metrics."""
         
         total_market_value = sum(abs(pos.market_value) for pos in self.positions.values())
         total_unrealized_pnl = sum(pos.unrealized_pnl for pos in self.positions.values())
         total_value = self.cash_balance + total_market_value
+        
+        # Update performance analytics with current portfolio value
+        self.performance_analytics.update_portfolio_value(total_value)
         
         position_details = []
         for symbol, position in self.positions.items():
@@ -1489,6 +1507,9 @@ class PortfolioManagerAgent(BaseAgent):
                 "weight": abs(position.market_value) / total_value if total_value > 0 else 0
             })
         
+        # Get enhanced performance metrics
+        performance_metrics = self.performance_analytics.get_comprehensive_metrics()
+        
         return {
             "timestamp": datetime.now(),
             "total_value": total_value,
@@ -1498,7 +1519,22 @@ class PortfolioManagerAgent(BaseAgent):
             "total_unrealized_pnl_pct": total_unrealized_pnl / self.initial_capital if self.initial_capital > 0 else 0,
             "position_count": len(self.positions),
             "cash_allocation": self.cash_balance / total_value if total_value > 0 else 1,
-            "positions": position_details
+            "positions": position_details,
+            
+            # Enhanced Performance Metrics
+            "performance_metrics": {
+                "sharpe_ratio": performance_metrics["sharpe_ratio"],
+                "sortino_ratio": performance_metrics["sortino_ratio"],
+                "calmar_ratio": performance_metrics["calmar_ratio"],
+                "max_drawdown_pct": performance_metrics["max_drawdown_pct"],
+                "max_drawdown_amount": performance_metrics["max_drawdown_amount"],
+                "volatility": performance_metrics["volatility"],
+                "win_rate": performance_metrics["win_rate"],
+                "profit_factor": performance_metrics["profit_factor"],
+                "total_trades": performance_metrics["total_trades"],
+                "var_5pct": performance_metrics["var_5pct"],
+                "annualized_return": performance_metrics["annualized_return"]
+            }
         }
 
     def _persist_state(self):
@@ -1581,40 +1617,57 @@ class PortfolioManagerAgent(BaseAgent):
         total_market_value = sum(abs(pos.market_value) for pos in self.positions.values())
         return self.cash_balance + total_market_value
     
+    def get_performance_summary(self) -> str:
+        """
+        Get a formatted performance summary with enhanced metrics.
+        
+        Returns:
+            Formatted string with comprehensive performance analysis
+        """
+        return self.performance_analytics.get_performance_summary()
+    
+    def get_performance_metrics(self) -> Dict[str, Any]:
+        """
+        Get comprehensive performance metrics dictionary.
+        
+        Returns:
+            Dictionary with all performance metrics
+        """
+        return self.performance_analytics.get_comprehensive_metrics()
+    
+    def export_performance_data(self) -> Dict[str, Any]:
+        """
+        Export all performance data for external analysis.
+        
+        Returns:
+            Dictionary with all performance data and analytics
+        """
+        return self.performance_analytics.export_performance_data()
+    
     def _update_performance_metrics(self) -> Dict[str, float]:
-        """Update and calculate performance metrics."""
+        """Update and calculate performance metrics using enhanced analytics."""
         
+        # Update portfolio value in analytics
         current_value = self._get_total_portfolio_value()
-        total_return = (current_value - self.initial_capital) / self.initial_capital
+        self.performance_analytics.update_portfolio_value(current_value)
         
-        # Calculate metrics from trade history
-        realized_trades = [t for t in self.trade_history if "realized_pnl" in t]
+        # Get comprehensive metrics from our enhanced analytics
+        enhanced_metrics = self.performance_analytics.get_comprehensive_metrics()
         
-        if realized_trades:
-            total_realized_pnl = sum(t["realized_pnl"] for t in realized_trades)
-            winning_trades = [t for t in realized_trades if t["realized_pnl"] > 0]
-            losing_trades = [t for t in realized_trades if t["realized_pnl"] < 0]
-            
-            win_rate = len(winning_trades) / len(realized_trades)
-            avg_win = np.mean([t["realized_pnl"] for t in winning_trades]) if winning_trades else 0
-            avg_loss = np.mean([t["realized_pnl"] for t in losing_trades]) if losing_trades else 0
-            profit_factor = abs(sum(t["realized_pnl"] for t in winning_trades)) / abs(sum(t["realized_pnl"] for t in losing_trades)) if losing_trades else 0
-        else:
-            total_realized_pnl = 0
-            win_rate = 0
-            avg_win = 0
-            avg_loss = 0
-            profit_factor = 0
-        
+        # Update the legacy performance_metrics for backward compatibility
         self.performance_metrics = {
-            "total_return": total_return,
-            "total_realized_pnl": total_realized_pnl,
-            "win_rate": win_rate,
-            "average_win": avg_win,
-            "average_loss": avg_loss,
-            "profit_factor": profit_factor,
-            "total_trades": len(realized_trades),
-            "current_positions": len(self.positions)
+            "total_return": enhanced_metrics["total_return"],
+            "win_rate": enhanced_metrics["win_rate"],
+            "profit_factor": enhanced_metrics["profit_factor"],
+            "total_trades": enhanced_metrics["total_trades"],
+            "current_positions": len(self.positions),
+            
+            # New enhanced metrics
+            "sharpe_ratio": enhanced_metrics["sharpe_ratio"],
+            "sortino_ratio": enhanced_metrics["sortino_ratio"],
+            "max_drawdown": enhanced_metrics["max_drawdown_pct"],
+            "volatility": enhanced_metrics["volatility"],
+            "calmar_ratio": enhanced_metrics["calmar_ratio"]
         }
         
         return self.performance_metrics

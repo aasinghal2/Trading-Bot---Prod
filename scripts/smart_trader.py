@@ -703,6 +703,18 @@ class SmartTrader:
                 
                 account_pnl_emoji = "🟢" if total_account_pnl >= 0 else "🔴"
                 
+                # Enhanced Performance Metrics
+                performance_metrics = current_portfolio_state.get('performance_metrics', {})
+                sharpe_ratio = performance_metrics.get('sharpe_ratio', 0)
+                sortino_ratio = performance_metrics.get('sortino_ratio', 0)
+                max_drawdown = performance_metrics.get('max_drawdown_pct', 0)
+                win_rate = performance_metrics.get('win_rate', 0)
+                volatility = performance_metrics.get('volatility', 0)
+                
+                # Performance indicators
+                sharpe_indicator = "✅" if sharpe_ratio > 1.0 else "⚠️" if sharpe_ratio > 0.5 else "❌"
+                sortino_indicator = "✅" if sortino_ratio > 1.5 else "⚠️" if sortino_ratio > 1.0 else "❌"
+                
                 body_lines.extend([
                     "",
                     "=" * 60,
@@ -714,7 +726,16 @@ class SmartTrader:
                     f"💵 Initial Capital: ${initial_capital:,.2f}",
                     f"{account_pnl_emoji} Total Account P&L: ${total_account_pnl:,.2f} ({total_account_pnl_pct:+.2f}%)",
                     f"📈 Total Unrealized P&L: ${total_unrealized_pnl:,.2f}",
-                    f"📊 Number of Positions: {len(positions)}"
+                    f"📊 Number of Positions: {len(positions)}",
+                    "",
+                    "=" * 60,
+                    "⚡ PERFORMANCE METRICS",
+                    "=" * 60,
+                    f"📊 Sharpe Ratio: {sharpe_ratio:.2f} {sharpe_indicator}",
+                    f"🎯 Sortino Ratio: {sortino_ratio:.2f} {sortino_indicator}",
+                    f"📉 Max Drawdown: {max_drawdown:.2%}",
+                    f"🎯 Win Rate: {win_rate:.1%}",
+                    f"🌪️ Volatility: {volatility:.1%}"
                 ])
             else:
                 body_lines.extend([
